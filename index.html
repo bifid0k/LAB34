@@ -1296,6 +1296,11 @@
             }
         }
     </style>
+
+    <!-- Firebase App (the core Firebase SDK) -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 </head>
 
 <body>
@@ -1575,6 +1580,18 @@
                     <div class="list-container">
                         <h3 style="margin-bottom: 24px;">Настройки системы</h3>
 
+                        <div
+                            style="background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+                            <h4 style="font-size: 18px; margin-bottom: 20px; color: #1a1a1a;">
+                                <span class="material-icons"
+                                    style="vertical-align: middle; margin-right: 8px; color: #5e72e4;">cloud_sync</span>
+                                Синхронизация с облаком
+                            </h4>
+                            <div id="auth-container">
+                                <!-- Заполняется динамически -->
+                            </div>
+                        </div>
+
                         <div style="display: grid; gap: 24px; max-width: 800px;">
                             <!-- Управление данными -->
                             <div
@@ -1624,6 +1641,26 @@
                                             Очистить все данные
                                         </button>
                                     </div>
+                                </div>
+                            </div>
+
+                            <!-- Категории цен -->
+                            <div
+                                style="background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+                                <h4 style="font-size: 18px; margin-bottom: 20px; color: #1a1a1a;">
+                                    <span class="material-icons"
+                                        style="vertical-align: middle; margin-right: 8px; color: #5e72e4;">attach_money</span>
+                                    Ценовые категории
+                                </h4>
+
+                                <button class="btn btn-success" onclick="openPriceCategoryModal()"
+                                    style="margin-bottom: 16px;">
+                                    <span class="material-icons">add</span>
+                                    Добавить категорию
+                                </button>
+
+                                <div id="price-categories-list">
+                                    <!-- Заполняется динамически -->
                                 </div>
                             </div>
 
@@ -1954,10 +1991,6 @@
                         <label>Название *</label>
                         <input type="text" id="equipment-name" required>
                     </div>
-                    <div class="form-group">
-                        <label>Бренд</label>
-                        <input type="text" id="equipment-brand">
-                    </div>
                 </div>
                 <div class="form-group">
                     <label>Категория *</label>
@@ -1990,23 +2023,69 @@
                     </div>
                 </div>
                 <h4 style="margin: 24px 0 12px 0; font-size: 16px;">Ценообразование</h4>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Цена дневного проката (₽)</label>
-                        <input type="number" id="equipment-hourly-price" step="0.01" min="0">
-                    </div>
-                    <div class="form-group">
-                        <label>Цена первых суток (₽)</label>
-                        <input type="number" id="equipment-daily-price" step="0.01" min="0">
-                    </div>
-                </div>
                 <div class="form-group">
-                    <label>Цена последующих суток (₽)</label>
-                    <input type="number" id="equipment-next-days-price" step="0.01" min="0">
+                    <label>Ценовая категория *</label>
+                    <select id="equipment-price-category" required onchange="toggleCustomPrices()">
+                        <option value="">Выберите категорию...</option>
+                        <!-- Заполняется динамически -->
+                    </select>
+                </div>
+                <div id="custom-prices-block" style="display: none;">
+                    <label style="font-size: 12px; color: #6c757d; margin-bottom: 8px;">
+                        Или укажите индивидуальные цены:
+                    </label>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Цена дневного проката (₽)</label>
+                            <input type="number" id="equipment-hourly-price" step="0.01" min="0">
+                        </div>
+                        <div class="form-group">
+                            <label>Цена первых суток (₽)</label>
+                            <input type="number" id="equipment-daily-price" step="0.01" min="0">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Цена последующих суток (₽)</label>
+                        <input type="number" id="equipment-next-days-price" step="0.01" min="0">
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-success" id="save-equipment-btn">Сохранить</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="price-category-modal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <button class="modal-close" onclick="closeModal('price-category-modal')">
+                <span class="material-icons">close</span>
+            </button>
+            <div class="modal-header">
+                <div class="modal-title" id="price-category-modal-title">Добавить ценовую категорию</div>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Название категории *</label>
+                    <input type="text" id="price-category-name" required>
+                </div>
+                <div class="form-group">
+                    <label>Цена дневного проката (₽)</label>
+                    <input type="number" id="price-category-hourly" step="10" min="0">
+                </div>
+                <div class="form-group">
+                    <label>Цена первых суток (₽)</label>
+                    <input type="number" id="price-category-daily" step="10" min="0">
+                </div>
+                <div class="form-group">
+                    <label>Цена последующих суток (₽)</label>
+                    <input type="number" id="price-category-next" step="10" min="0">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" id="delete-price-category-btn" style="display: none;"
+                    onclick="deletePriceCategory()">Удалить</button>
+                <button type="button" class="btn btn-success" onclick="savePriceCategory()">Сохранить</button>
             </div>
         </div>
     </div>
@@ -2024,6 +2103,27 @@
         let equipmentCalendarDate = new Date();
         let currentEquipmentId = null;
         let autosaveEnabled = true;
+        let currentEditingPriceCategory = null;
+
+        // ============= FIREBASE КОНФИГУРАЦИЯ =============
+        const firebaseConfig = {
+            apiKey: "AIzaSyBeVWYjvGiFvbs3ovqLYHZAyQqz8ArFj5E",
+            authDomain: "active-and-positive.firebaseapp.com",
+            projectId: "active-and-positive",
+            storageBucket: "active-and-positive.firebasestorage.app",
+            messagingSenderId: "418586546672",
+            appId: "1:418586546672:web:a3e89dfcd000f0324e0d35"
+        };
+
+        // Инициализация Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // Переменные для работы с Firebase
+        let currentUser = null;
+        let unsubscribers = [];
+        let syncEnabled = false;
 
         // Базы данных
         let orders = [];
@@ -2031,6 +2131,7 @@
         let equipment = [];
         let categories = [];
         let orderDrafts = [];
+        let priceCategories = [];
 
         // ============= ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =============
 
@@ -2087,6 +2188,7 @@
                 clients: clients,
                 equipment: equipment,
                 categories: categories,
+                priceCategories: priceCategories,
                 orders: orders,
                 orderDrafts: orderDrafts,
                 orderCounter: orderCounter
@@ -2114,6 +2216,7 @@
                 clients = data.clients || [];
                 equipment = data.equipment || [];
                 categories = data.categories || [];
+                priceCategories = data.priceCategories || [];
                 orders = data.orders || [];
                 orderDrafts = data.orderDrafts || [];
                 orderCounter = data.orderCounter || 1;
@@ -2301,12 +2404,29 @@
             ];
         }
 
+        function initializePriceCategories() {
+            priceCategories = [
+                { id: 1, name: 'Премиум сноуборды', hourlyPrice: 1000, dailyPrice: 1200, nextDaysPrice: 800 },
+                { id: 2, name: 'Стандарт сноуборды', hourlyPrice: 800, dailyPrice: 1000, nextDaysPrice: 600 },
+                { id: 3, name: 'Эконом сноуборды', hourlyPrice: 600, dailyPrice: 800, nextDaysPrice: 500 },
+                { id: 4, name: 'Премиум лыжи', hourlyPrice: 1100, dailyPrice: 1300, nextDaysPrice: 900 },
+                { id: 5, name: 'Стандарт лыжи', hourlyPrice: 900, dailyPrice: 1100, nextDaysPrice: 700 },
+                { id: 6, name: 'Ботинки стандарт', hourlyPrice: 400, dailyPrice: 500, nextDaysPrice: 300 },
+                { id: 7, name: 'Шлемы', hourlyPrice: 200, dailyPrice: 300, nextDaysPrice: 200 },
+                { id: 8, name: 'Детское оборудование', hourlyPrice: 500, dailyPrice: 600, nextDaysPrice: 400 }
+            ];
+        }
+
         // ============= ИНИЦИАЛИЗАЦИЯ ДАННЫХ =============
         function initializeData() {
             // Пытаемся загрузить данные из LocalStorage
             if (!loadFromLocalStorage()) {
                 // Если нет сохраненных данных, инициализируем базовые
                 initializeCategories();
+
+                if (priceCategories.length === 0) {
+                    initializePriceCategories();
+                }
 
                 // Демо данные (можно удалить для продакшена)
                 clients = [
@@ -2347,7 +2467,6 @@
                         id: 1,
                         name: 'Burton Custom 156',
                         category: 'snowboards',
-                        brand: 'Burton',
                         length: 156,
                         stiffness: 6,
                         hourlyPrice: 800,
@@ -2359,7 +2478,6 @@
                         id: 2,
                         name: 'Burton ботинки 42',
                         category: 'snowboard-boots',
-                        brand: 'Burton',
                         size: 42,
                         hourlyPrice: 400,
                         dailyPrice: 500,
@@ -2370,7 +2488,6 @@
                         id: 3,
                         name: 'K2 женские лыжи 150',
                         category: 'skis',
-                        brand: 'K2',
                         length: 150,
                         hourlyPrice: 900,
                         dailyPrice: 1100,
@@ -2381,7 +2498,6 @@
                         id: 4,
                         name: 'Rossignol Hero 170',
                         category: 'skis',
-                        brand: 'Rossignol',
                         length: 170,
                         hourlyPrice: 900,
                         dailyPrice: 1100,
@@ -2392,7 +2508,6 @@
                         id: 5,
                         name: 'Salomon ботинки 44',
                         category: 'ski-boots',
-                        brand: 'Salomon',
                         size: 44,
                         hourlyPrice: 400,
                         dailyPrice: 500,
@@ -2551,12 +2666,26 @@
         }
 
         function calculateEquipmentPrice(equipment, isSameDay, days) {
-            if (isSameDay) {
-                return equipment.hourlyPrice || equipment.dailyPrice * 0.8;
-            } else if (days === 1) {
-                return equipment.dailyPrice;
+            // Получаем цены из категории
+            let prices;
+            if (equipment.priceCategoryId) {
+                const category = priceCategories.find(pc => pc.id === equipment.priceCategoryId);
+                prices = category || { hourlyPrice: 500, dailyPrice: 700, nextDaysPrice: 400 };
             } else {
-                return equipment.dailyPrice + (equipment.nextDaysPrice * (days - 1));
+                // Обратная совместимость со старыми данными
+                prices = {
+                    hourlyPrice: equipment.hourlyPrice || 500,
+                    dailyPrice: equipment.dailyPrice || 700,
+                    nextDaysPrice: equipment.nextDaysPrice || 400
+                };
+            }
+
+            if (isSameDay) {
+                return prices.hourlyPrice || prices.dailyPrice * 0.8;
+            } else if (days === 1) {
+                return prices.dailyPrice;
+            } else {
+                return prices.dailyPrice + (prices.nextDaysPrice * (days - 1));
             }
         }
 
@@ -2597,6 +2726,7 @@
             // Если переключились на настройки, обновляем информацию
             if (page === 'settings') {
                 updateSystemInfo();
+                renderPriceCategories();
             }
         }
 
@@ -2953,8 +3083,7 @@
 
             if (searchQuery) {
                 filteredEquipment = filteredEquipment.filter(item =>
-                    item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                    (item.brand && item.brand.toLowerCase().includes(searchQuery.toLowerCase()))
+                    item.name.toLowerCase().includes(searchQuery.toLowerCase())
                 );
             }
 
@@ -2983,15 +3112,180 @@
                             <div class="equipment-status status-${actualStatus}">${getEquipmentStatusName(actualStatus)}</div>
                         </div>
                         <div class="equipment-specs">
-                            ${item.brand ? `<span><strong>Бренд:</strong> ${item.brand}</span>` : ''}
                             ${item.length ? `<span><strong>Длина:</strong> ${item.length}см</span>` : ''}
                             ${item.size ? `<span><strong>Размер:</strong> ${item.size}</span>` : ''}
                             ${item.stiffness ? `<span><strong>Жёсткость:</strong> ${item.stiffness}/10</span>` : ''}
-                            <span><strong>Цена день:</strong> ${item.dailyPrice}₽</span>
+                            ${getEquipmentPriceDisplay(item)}
                         </div>
                     </div>
                 `;
             }).join('');
+        }
+
+        // ==========ЦЕНОВЫЕ КАТЕГОРИИ=============
+        function renderPriceCategories() {
+            const container = document.getElementById('price-categories-list');
+            if (!container) return;
+
+            if (priceCategories.length === 0) {
+                container.innerHTML = '<p style="color: #6c757d;">Нет ценовых категорий</p>';
+                return;
+            }
+
+            container.innerHTML = priceCategories.map(pc => {
+                const equipmentCount = equipment.filter(e => e.priceCategoryId === pc.id).length;
+                return `
+            <div style="padding: 12px 16px; background: #f8f9fa; border-radius: 8px; margin-bottom: 8px; cursor: pointer;"
+                 onclick="openPriceCategoryModal(${pc.id})">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-weight: 500; font-size: 14px;">${pc.name}</div>
+                        <div style="font-size: 12px; color: #6c757d; margin-top: 4px;">
+                            Дневной: ${pc.hourlyPrice}₽ | Сутки: ${pc.dailyPrice}₽ | 2+ сутки: ${pc.nextDaysPrice}₽
+                        </div>
+                        <div style="font-size: 11px; color: #868e96; margin-top: 2px;">
+                            Привязано оборудования: ${equipmentCount}
+                        </div>
+                    </div>
+                    <span class="material-icons" style="color: #dee2e6;">chevron_right</span>
+                </div>
+            </div>
+        `;
+            }).join('');
+        }
+
+        function getEquipmentPriceDisplay(item) {
+            if (item.priceCategoryId) {
+                const category = priceCategories.find(pc => pc.id === item.priceCategoryId);
+                if (category) {
+                    return `<span><strong>Категория:</strong> ${category.name}</span>
+                    <span><strong>Цена/день:</strong> ${category.dailyPrice}₽</span>`;
+                }
+            }
+            return `<span><strong>Цена/день:</strong> ${item.dailyPrice || 0}₽</span>`;
+        }
+
+        function openPriceCategoryModal(categoryId = null) {
+            currentEditingPriceCategory = categoryId;
+
+            if (categoryId) {
+                const category = priceCategories.find(pc => pc.id === categoryId);
+                if (category) {
+                    document.getElementById('price-category-modal-title').textContent = 'Редактировать ценовую категорию';
+                    document.getElementById('price-category-name').value = category.name;
+                    document.getElementById('price-category-hourly').value = category.hourlyPrice;
+                    document.getElementById('price-category-daily').value = category.dailyPrice;
+                    document.getElementById('price-category-next').value = category.nextDaysPrice;
+                    document.getElementById('delete-price-category-btn').style.display = 'block';
+                }
+            } else {
+                document.getElementById('price-category-modal-title').textContent = 'Добавить ценовую категорию';
+                document.getElementById('price-category-name').value = '';
+                document.getElementById('price-category-hourly').value = '';
+                document.getElementById('price-category-daily').value = '';
+                document.getElementById('price-category-next').value = '';
+                document.getElementById('delete-price-category-btn').style.display = 'none';
+            }
+
+            document.getElementById('price-category-modal').classList.add('show');
+        }
+
+        function savePriceCategory() {
+            const name = document.getElementById('price-category-name').value.trim();
+            const hourlyPrice = parseFloat(document.getElementById('price-category-hourly').value) || 0;
+            const dailyPrice = parseFloat(document.getElementById('price-category-daily').value) || 0;
+            const nextDaysPrice = parseFloat(document.getElementById('price-category-next').value) || 0;
+
+            if (!name) {
+                alert('Введите название категории');
+                return;
+            }
+
+            if (currentEditingPriceCategory) {
+                const index = priceCategories.findIndex(pc => pc.id === currentEditingPriceCategory);
+                if (index !== -1) {
+                    priceCategories[index] = {
+                        ...priceCategories[index],
+                        name: name,
+                        hourlyPrice: hourlyPrice,
+                        dailyPrice: dailyPrice,
+                        nextDaysPrice: nextDaysPrice
+                    };
+                    showNotification('Ценовая категория обновлена');
+                    saveToFirebase('priceCategories', priceCategories[index] || newCategory);
+                }
+            } else {
+                const newCategory = {
+                    id: Date.now(),
+                    name: name,
+                    hourlyPrice: hourlyPrice,
+                    dailyPrice: dailyPrice,
+                    nextDaysPrice: nextDaysPrice
+                };
+                priceCategories.push(newCategory);
+                showNotification('Ценовая категория добавлена');
+                saveToFirebase('priceCategories', priceCategories[index] || newCategory);
+            }
+
+            closeModal('price-category-modal');
+            renderPriceCategories();
+            saveToLocalStorage();
+        }
+
+        function deletePriceCategory() {
+            if (!currentEditingPriceCategory) return;
+
+            const equipmentCount = equipment.filter(e => e.priceCategoryId === currentEditingPriceCategory).length;
+
+            if (equipmentCount > 0) {
+                if (!confirm(`К этой категории привязано ${equipmentCount} единиц оборудования. При удалении им будут установлены стандартные цены. Продолжить?`)) {
+                    return;
+                }
+
+                // Переводим оборудование на индивидуальные цены
+                const category = priceCategories.find(pc => pc.id === currentEditingPriceCategory);
+                equipment.forEach(e => {
+                    if (e.priceCategoryId === currentEditingPriceCategory) {
+                        e.hourlyPrice = category.hourlyPrice;
+                        e.dailyPrice = category.dailyPrice;
+                        e.nextDaysPrice = category.nextDaysPrice;
+                        delete e.priceCategoryId;
+                    }
+                });
+            }
+
+            const index = priceCategories.findIndex(pc => pc.id === currentEditingPriceCategory);
+            if (index !== -1) {
+                priceCategories.splice(index, 1);
+                showNotification('Ценовая категория удалена');
+                deleteFromFirebase('priceCategories', currentEditingPriceCategory);
+            }
+
+            closeModal('price-category-modal');
+            renderPriceCategories();
+            saveToLocalStorage();
+        }
+
+        function toggleCustomPrices() {
+            const categorySelect = document.getElementById('equipment-price-category');
+            const customPricesBlock = document.getElementById('custom-prices-block');
+
+            if (categorySelect.value === 'custom') {
+                customPricesBlock.style.display = 'block';
+            } else {
+                customPricesBlock.style.display = 'none';
+            }
+        }
+
+        function updateEquipmentPriceCategorySelect() {
+            const select = document.getElementById('equipment-price-category');
+            if (!select) return;
+
+            select.innerHTML = `
+        <option value="">Выберите категорию...</option>
+        ${priceCategories.map(pc => `<option value="${pc.id}">${pc.name} (${pc.dailyPrice}₽/сутки)</option>`).join('')}
+        <option value="custom">Индивидуальные цены</option>
+    `;
         }
 
         // ============= МОДАЛЬНЫЕ ОКНА =============
@@ -3628,6 +3922,7 @@
                     renderEquipment();
                     renderClients();
                     showNotification('Заказ успешно создан!');
+                    saveToFirebase('orders', orderData);
                     saveToLocalStorage();
                 }
             }
@@ -3667,6 +3962,7 @@
                     renderEquipment();
                     renderClients();
                     showNotification('Заказ успешно обновлён!');
+                    saveToFirebase('orders', orderData);
                     saveToLocalStorage();
                 }
             }
@@ -3686,6 +3982,7 @@
                         });
                     });
                     showNotification('Заказ восстановлен');
+                    saveToFirebase('orders', order);
                 } else {
                     order.status = 'cancelled';
 
@@ -3699,6 +3996,7 @@
                     });
 
                     showNotification('Заказ отменён');
+                    saveToFirebase('orders', order);
                 }
 
                 renderOrders();
@@ -3730,7 +4028,7 @@
                         orderDrafts.push(draftData);
                     }
 
-                    showNotification('Черновик автоматически сохранён');
+                    saveToFirebase('settings', {});
                 }
             }
         }
@@ -3761,6 +4059,7 @@
                         notes: notes
                     };
                     showNotification('Клиент обновлён');
+                    saveToFirebase('clients', clients[clientIndex] || newClient);
                 }
             } else {
                 const newClient = {
@@ -3795,6 +4094,7 @@
                 }
 
                 showNotification('Клиент добавлен');
+                saveToFirebase('clients', clients[clientIndex] || newClient);
             }
 
             closeModal('client-modal');
@@ -3809,6 +4109,7 @@
                 if (clientIndex !== -1) {
                     clients.splice(clientIndex, 1);
                     showNotification('Клиент удалён');
+                    deleteFromFirebase('clients', currentEditingClient);
                     closeModal('client-modal');
                     renderClients();
                     saveToLocalStorage();
@@ -3826,105 +4127,135 @@
 
             const content = document.getElementById('equipment-detail-content');
             content.innerHTML = `
-                <div style="display: flex; gap: 24px;">
-                    <div style="flex: 1;">
-                        <h4 style="font-size: 16px; margin-bottom: 16px;">Основная информация</h4>
-                        <div style="margin-bottom: 24px; font-size: 14px;">
-                            <div style="margin-bottom: 12px;">
-                                <label style="display: block; font-weight: 500; margin-bottom: 4px;">Бренд:</label>
-                                <input type="text" value="${equipmentItem.brand || ''}" id="detail-brand"
-                                       style="width: 100%; padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 6px;">
-                            </div>
-                            <div style="margin-bottom: 12px;">
-                                <strong>Категория:</strong> ${categories.find(c => c.id === equipmentItem.category)?.name || equipmentItem.category}
-                            </div>
-                            ${equipmentItem.length !== null && equipmentItem.length !== undefined ? `
-                                <div style="margin-bottom: 12px;">
-                                    <label style="display: block; font-weight: 500; margin-bottom: 4px;">Длина (см):</label>
-                                    <input type="number" value="${equipmentItem.length}" id="detail-length"
-                                           style="width: 100%; padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 6px;">
-                                </div>` : ''}
-                            ${equipmentItem.size !== null && equipmentItem.size !== undefined ? `
-                                <div style="margin-bottom: 12px;">
-                                    <label style="display: block; font-weight: 500; margin-bottom: 4px;">Размер:</label>
-                                    <input type="number" value="${equipmentItem.size}" step="0.5" id="detail-size"
-                                           style="width: 100%; padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 6px;">
-                                </div>` : ''}
-                            ${equipmentItem.stiffness !== null && equipmentItem.stiffness !== undefined ? `
-                                <div style="margin-bottom: 12px;">
-                                    <label style="display: block; font-weight: 500; margin-bottom: 4px;">Жёсткость (1-10):</label>
-                                    <input type="number" value="${equipmentItem.stiffness}" min="1" max="10" id="detail-stiffness"
-                                           style="width: 100%; padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 6px;">
-                                </div>` : ''}
-                            <div style="margin-bottom: 12px;">
-                                <label style="display: block; font-weight: 500; margin-bottom: 4px;">Статус:</label>
-                                <select id="detail-status"
-                                        style="width: 100%; padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 6px;">
-                                    <option value="available" ${equipmentItem.status === 'available' ? 'selected' : ''}>Доступно</option>
-                                    <option value="maintenance" ${equipmentItem.status === 'maintenance' ? 'selected' : ''}>На обслуживании</option>
-                                    <option value="damaged" ${equipmentItem.status === 'damaged' ? 'selected' : ''}>Повреждено</option>
-                                </select>
-                            </div>
-                        </div>
-                        
-                        <h4 style="font-size: 16px; margin-bottom: 16px;">Ценообразование</h4>
-                        <div style="font-size: 14px;">
-                            <div style="margin-bottom: 12px;">
-                                <label style="display: block; font-weight: 500; margin-bottom: 4px;">Дневной прокат (₽):</label>
-                                <input type="number" value="${equipmentItem.hourlyPrice}" step="10" id="detail-hourly"
-                                       style="width: 100%; padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 6px;">
-                            </div>
-                            <div style="margin-bottom: 12px;">
-                                <label style="display: block; font-weight: 500; margin-bottom: 4px;">Первые сутки (₽):</label>
-                                <input type="number" value="${equipmentItem.dailyPrice}" step="10" id="detail-daily"
-                                       style="width: 100%; padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 6px;">
-                            </div>
-                            <div style="margin-bottom: 12px;">
-                                <label style="display: block; font-weight: 500; margin-bottom: 4px;">Последующие сутки (₽):</label>
-                                <input type="number" value="${equipmentItem.nextDaysPrice}" step="10" id="detail-next"
-                                       style="width: 100%; padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 6px;">
-                            </div>
-                        </div>
+        <div style="display: flex; gap: 24px;">
+            <div style="flex: 1;">
+                <h4 style="font-size: 16px; margin-bottom: 16px;">Основная информация</h4>
+                <div style="margin-bottom: 24px; font-size: 14px;">
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; font-weight: 500; margin-bottom: 4px;">Название:</label>
+                        <input type="text" value="${equipmentItem.name}" id="detail-name"
+                               style="width: 100%; padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 6px;">
                     </div>
-                    
-                    <div style="width: 380px;">
-                        <div class="equipment-calendar">
-                            <h4 style="margin-bottom: 12px; font-size: 16px;">Календарь занятости</h4>
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin: 12px 0;">
-                                <button type="button" id="equipment-calendar-prev" style="background: none; border: none; cursor: pointer; padding: 4px;">
-                                    <span class="material-icons">chevron_left</span>
-                                </button>
-                                <span id="equipment-calendar-title">Январь 2025</span>
-                                <button type="button" id="equipment-calendar-next" style="background: none; border: none; cursor: pointer; padding: 4px;">
-                                    <span class="material-icons">chevron_right</span>
-                                </button>
-                            </div>
-                            <div class="equipment-calendar-grid" id="equipment-calendar-grid">
-                                <!-- Календарь заполняется динамически -->
-                            </div>
+                    <div style="margin-bottom: 12px;">
+                        <strong>Категория:</strong> ${categories.find(c => c.id === equipmentItem.category)?.name || equipmentItem.category}
+                    </div>
+                    ${equipmentItem.length !== null && equipmentItem.length !== undefined ? `
+                        <div style="margin-bottom: 12px;">
+                            <label style="display: block; font-weight: 500; margin-bottom: 4px;">Длина (см):</label>
+                            <input type="number" value="${equipmentItem.length}" id="detail-length"
+                                   style="width: 100%; padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 6px;">
+                        </div>` : ''}
+                    ${equipmentItem.size !== null && equipmentItem.size !== undefined ? `
+                        <div style="margin-bottom: 12px;">
+                            <label style="display: block; font-weight: 500; margin-bottom: 4px;">Размер:</label>
+                            <input type="number" value="${equipmentItem.size}" step="0.5" id="detail-size"
+                                   style="width: 100%; padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 6px;">
+                        </div>` : ''}
+                    ${equipmentItem.stiffness !== null && equipmentItem.stiffness !== undefined ? `
+                        <div style="margin-bottom: 12px;">
+                            <label style="display: block; font-weight: 500; margin-bottom: 4px;">Жёсткость (1-10):</label>
+                            <input type="number" value="${equipmentItem.stiffness}" min="1" max="10" id="detail-stiffness"
+                                   style="width: 100%; padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 6px;">
+                        </div>` : ''}
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; font-weight: 500; margin-bottom: 4px;">Статус:</label>
+                        <select id="detail-status"
+                                style="width: 100%; padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 6px;">
+                            <option value="available" ${equipmentItem.status === 'available' ? 'selected' : ''}>Доступно</option>
+                            <option value="maintenance" ${equipmentItem.status === 'maintenance' ? 'selected' : ''}>На обслуживании</option>
+                            <option value="damaged" ${equipmentItem.status === 'damaged' ? 'selected' : ''}>Повреждено</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <h4 style="font-size: 16px; margin-bottom: 16px;">Ценообразование</h4>
+                <div style="font-size: 14px;">
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; font-weight: 500; margin-bottom: 4px;">Ценовая категория:</label>
+                        <select id="detail-price-category" onchange="toggleDetailCustomPrices()"
+                                style="width: 100%; padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 6px;">
+                            <option value="">Выберите категорию...</option>
+                            ${priceCategories.map(pc => `
+                                <option value="${pc.id}" ${equipmentItem.priceCategoryId === pc.id ? 'selected' : ''}>
+                                    ${pc.name} (${pc.dailyPrice}₽/сутки)
+                                </option>
+                            `).join('')}
+                            <option value="custom" ${!equipmentItem.priceCategoryId ? 'selected' : ''}>Индивидуальные цены</option>
+                        </select>
+                    </div>
+                    <div id="detail-custom-prices" style="${equipmentItem.priceCategoryId ? 'display: none;' : ''}">
+                        <div style="margin-bottom: 12px;">
+                            <label style="display: block; font-weight: 500; margin-bottom: 4px;">Дневной прокат (₽):</label>
+                            <input type="number" value="${equipmentItem.hourlyPrice || ''}" step="10" id="detail-hourly"
+                                   style="width: 100%; padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 6px;">
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <label style="display: block; font-weight: 500; margin-bottom: 4px;">Первые сутки (₽):</label>
+                            <input type="number" value="${equipmentItem.dailyPrice || ''}" step="10" id="detail-daily"
+                                   style="width: 100%; padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 6px;">
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <label style="display: block; font-weight: 500; margin-bottom: 4px;">Последующие сутки (₽):</label>
+                            <input type="number" value="${equipmentItem.nextDaysPrice || ''}" step="10" id="detail-next"
+                                   style="width: 100%; padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 6px;">
                         </div>
                     </div>
                 </div>
-            `;
+            </div>
+            
+            <div style="width: 380px;">
+                <div class="equipment-calendar">
+                    <h4 style="margin-bottom: 12px; font-size: 16px;">Календарь занятости</h4>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin: 12px 0;">
+                        <button type="button" id="equipment-calendar-prev" style="background: none; border: none; cursor: pointer; padding: 4px;">
+                            <span class="material-icons">chevron_left</span>
+                        </button>
+                        <span id="equipment-calendar-title">Январь 2025</span>
+                        <button type="button" id="equipment-calendar-next" style="background: none; border: none; cursor: pointer; padding: 4px;">
+                            <span class="material-icons">chevron_right</span>
+                        </button>
+                    </div>
+                    <div class="equipment-calendar-grid" id="equipment-calendar-grid">
+                        <!-- Календарь заполняется динамически -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
 
             // Обработчик сохранения
             document.getElementById('save-equipment-btn-detail').onclick = () => {
-                equipmentItem.brand = document.getElementById('detail-brand').value;
+                equipmentItem.name = document.getElementById('detail-name').value;
                 if (document.getElementById('detail-length')) equipmentItem.length = parseInt(document.getElementById('detail-length').value);
                 if (document.getElementById('detail-size')) equipmentItem.size = parseFloat(document.getElementById('detail-size').value);
                 if (document.getElementById('detail-stiffness')) equipmentItem.stiffness = parseInt(document.getElementById('detail-stiffness').value);
                 equipmentItem.status = document.getElementById('detail-status').value;
-                equipmentItem.hourlyPrice = parseFloat(document.getElementById('detail-hourly').value);
-                equipmentItem.dailyPrice = parseFloat(document.getElementById('detail-daily').value);
-                equipmentItem.nextDaysPrice = parseFloat(document.getElementById('detail-next').value);
+
+                const priceCategoryValue = document.getElementById('detail-price-category').value;
+                if (priceCategoryValue && priceCategoryValue !== 'custom') {
+                    equipmentItem.priceCategoryId = parseInt(priceCategoryValue);
+                    // Удаляем индивидуальные цены при выборе категории
+                    delete equipmentItem.hourlyPrice;
+                    delete equipmentItem.dailyPrice;
+                    delete equipmentItem.nextDaysPrice;
+                } else {
+                    delete equipmentItem.priceCategoryId;
+                    equipmentItem.hourlyPrice = parseFloat(document.getElementById('detail-hourly').value) || 0;
+                    equipmentItem.dailyPrice = parseFloat(document.getElementById('detail-daily').value) || 0;
+                    equipmentItem.nextDaysPrice = parseFloat(document.getElementById('detail-next').value) || 0;
+                }
+
+                // Обновляем заголовок модального окна с новым названием
+                document.getElementById('equipment-detail-title').textContent = equipmentItem.name;
 
                 renderEquipment();
                 showNotification('Изменения сохранены');
+                saveToFirebase('equipment', equipmentItem);
                 closeModal('equipment-detail-modal');
                 saveToLocalStorage();
             };
 
-            // Обработчик удаления
+            // Обработчик удаления (остается без изменений)
             document.getElementById('delete-equipment-btn').onclick = () => {
                 if (confirm('Вы уверены, что хотите удалить это оборудование?')) {
                     const index = equipment.findIndex(e => e.id === equipmentId);
@@ -3932,6 +4263,7 @@
                         equipment.splice(index, 1);
                         renderEquipment();
                         showNotification('Оборудование удалено');
+                        deleteFromFirebase('equipment', equipmentId);
                         closeModal('equipment-detail-modal');
                         saveToLocalStorage();
                     }
@@ -3943,12 +4275,14 @@
             document.getElementById('equipment-detail-modal').classList.add('show');
         }
 
-        function updateEquipmentField(equipmentId, field, value) {
-            const equipmentItem = equipment.find(e => e.id === equipmentId);
-            if (equipmentItem) {
-                equipmentItem[field] = value;
-                renderEquipment();
-                showNotification('Изменения сохранены');
+        function toggleDetailCustomPrices() {
+            const categorySelect = document.getElementById('detail-price-category');
+            const customPricesBlock = document.getElementById('detail-custom-prices');
+
+            if (categorySelect.value === 'custom' || !categorySelect.value) {
+                customPricesBlock.style.display = 'block';
+            } else {
+                customPricesBlock.style.display = 'none';
             }
         }
 
@@ -4107,6 +4441,7 @@
 
             closeModal('category-modal');
             showNotification('Категория добавлена');
+            saveToFirebase('settings', {});
             saveToLocalStorage();
         }
 
@@ -4146,7 +4481,6 @@
                 categories.map(cat => `<option value="${cat.id}" ${cat.id === activeCategory ? 'selected' : ''}>${cat.name}</option>`).join('');
 
             document.getElementById('equipment-name').value = '';
-            document.getElementById('equipment-brand').value = '';
             document.getElementById('equipment-length').value = '';
             document.getElementById('equipment-size').value = '';
             document.getElementById('equipment-stiffness').value = '';
@@ -4155,12 +4489,13 @@
             document.getElementById('equipment-daily-price').value = '';
             document.getElementById('equipment-next-days-price').value = '';
 
+            updateEquipmentPriceCategorySelect();
+
             document.getElementById('equipment-add-modal').classList.add('show');
         }
 
         function saveEquipment() {
             const name = document.getElementById('equipment-name').value.trim();
-            const brand = document.getElementById('equipment-brand').value.trim();
             const category = document.getElementById('equipment-category').value;
             const length = parseInt(document.getElementById('equipment-length').value) || null;
             const size = parseFloat(document.getElementById('equipment-size').value) || null;
@@ -4175,26 +4510,430 @@
                 return;
             }
 
+            const priceCategoryId = document.getElementById('equipment-price-category').value;
+
             const newEquipment = {
                 id: Date.now(),
                 name: name,
                 category: category,
-                brand: brand,
                 length: length,
                 size: size,
                 stiffness: stiffness,
-                status: status,
-                hourlyPrice: hourlyPrice,
-                dailyPrice: dailyPrice,
-                nextDaysPrice: nextDaysPrice
+                status: status
             };
+
+            if (priceCategoryId && priceCategoryId !== 'custom') {
+                newEquipment.priceCategoryId = parseInt(priceCategoryId);
+            } else {
+                newEquipment.hourlyPrice = parseFloat(document.getElementById('equipment-hourly-price').value) || 0;
+                newEquipment.dailyPrice = parseFloat(document.getElementById('equipment-daily-price').value) || 0;
+                newEquipment.nextDaysPrice = parseFloat(document.getElementById('equipment-next-days-price').value) || 0;
+            }
 
             equipment.push(newEquipment);
 
             closeModal('equipment-add-modal');
             renderEquipment();
             showNotification('Оборудование добавлено');
+            saveToFirebase('equipment', newEquipment);
             saveToLocalStorage();
+        }
+
+        // ============= FIREBASE АВТОРИЗАЦИЯ =============
+        function signInWithGoogle() {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            auth.signInWithPopup(provider)
+                .then((result) => {
+                    currentUser = result.user;
+                    showNotification(`Вы вошли как ${currentUser.email}`);
+                    updateAuthUI();
+                    enableFirebaseSync();
+                    saveToLocalStorage();
+                })
+                .catch((error) => {
+                    console.error('Ошибка входа:', error);
+                    showNotification('Ошибка входа. Попробуйте снова.');
+                });
+        }
+
+        function signOut() {
+            auth.signOut()
+                .then(() => {
+                    currentUser = null;
+                    disableFirebaseSync();
+                    showNotification('Вы вышли из аккаунта');
+                    updateAuthUI();
+                })
+                .catch((error) => {
+                    console.error('Ошибка выхода:', error);
+                });
+        }
+
+        function updateAuthUI() {
+            const authContainer = document.getElementById('auth-container');
+            if (!authContainer) return;
+
+            if (currentUser) {
+                authContainer.innerHTML = `
+            <div style="padding: 16px; background: #e7f5ff; border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-weight: 500; margin-bottom: 4px;">Вы вошли как:</div>
+                        <div style="font-size: 14px; color: #0c63e4;">${currentUser.email}</div>
+                        <div style="font-size: 12px; color: #6c757d; margin-top: 4px;">
+                            Синхронизация: <span style="color: #2dce89;">активна</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-danger" onclick="signOut()">
+                        <span class="material-icons">logout</span>
+                        Выйти
+                    </button>
+                </div>
+            </div>
+        `;
+            } else {
+                authContainer.innerHTML = `
+            <div style="padding: 16px; background: #f8f9fa; border-radius: 8px;">
+                <p style="margin-bottom: 12px; color: #6c757d;">
+                    Войдите для синхронизации данных между устройствами
+                </p>
+                <button class="btn" onclick="signInWithGoogle()">
+                    <span class="material-icons">login</span>
+                    Войти через Google
+                </button>
+            </div>
+        `;
+            }
+        }
+
+        // ============= FIREBASE СИНХРОНИЗАЦИЯ =============
+        function enableFirebaseSync() {
+            if (!currentUser || syncEnabled) return;
+
+            syncEnabled = true;
+
+            // Первоначальная загрузка данных из Firebase
+            loadFromFirebase().then(() => {
+                // Настраиваем реалтайм слушатели
+                setupRealtimeListeners();
+
+                // Загружаем локальные данные в Firebase если их там нет
+                uploadInitialData();
+            });
+        }
+
+        function disableFirebaseSync() {
+            syncEnabled = false;
+
+            // Отписываемся от всех слушателей
+            unsubscribers.forEach(unsubscribe => unsubscribe());
+            unsubscribers = [];
+        }
+
+        function setupRealtimeListeners() {
+            if (!currentUser) return;
+
+            const userId = currentUser.uid;
+
+            // Слушатель для клиентов
+            const clientsUnsubscribe = db.collection('users').doc(userId).collection('clients')
+                .onSnapshot((snapshot) => {
+                    snapshot.docChanges().forEach((change) => {
+                        if (change.type === 'added' || change.type === 'modified') {
+                            const data = change.doc.data();
+                            const index = clients.findIndex(c => c.id === data.id);
+                            if (index !== -1) {
+                                // Обновляем только если данные новее
+                                if (!clients[index].lastModified || data.lastModified > clients[index].lastModified) {
+                                    clients[index] = data;
+                                }
+                            } else {
+                                clients.push(data);
+                            }
+                        }
+                        if (change.type === 'removed') {
+                            const data = change.doc.data();
+                            clients = clients.filter(c => c.id !== data.id);
+                        }
+                    });
+                    renderClients();
+                    saveToLocalStorage();
+                });
+            unsubscribers.push(clientsUnsubscribe);
+
+            // Слушатель для оборудования
+            const equipmentUnsubscribe = db.collection('users').doc(userId).collection('equipment')
+                .onSnapshot((snapshot) => {
+                    snapshot.docChanges().forEach((change) => {
+                        if (change.type === 'added' || change.type === 'modified') {
+                            const data = change.doc.data();
+                            const index = equipment.findIndex(e => e.id === data.id);
+                            if (index !== -1) {
+                                if (!equipment[index].lastModified || data.lastModified > equipment[index].lastModified) {
+                                    equipment[index] = data;
+                                }
+                            } else {
+                                equipment.push(data);
+                            }
+                        }
+                        if (change.type === 'removed') {
+                            const data = change.doc.data();
+                            equipment = equipment.filter(e => e.id !== data.id);
+                        }
+                    });
+                    renderEquipment();
+                    saveToLocalStorage();
+                });
+            unsubscribers.push(equipmentUnsubscribe);
+
+            // Слушатель для заказов
+            const ordersUnsubscribe = db.collection('users').doc(userId).collection('orders')
+                .onSnapshot((snapshot) => {
+                    snapshot.docChanges().forEach((change) => {
+                        if (change.type === 'added' || change.type === 'modified') {
+                            const data = change.doc.data();
+                            // Конвертируем Timestamp в Date
+                            data.startDate = data.startDate.toDate();
+                            data.endDate = data.endDate.toDate();
+                            data.createdAt = data.createdAt.toDate();
+
+                            const index = orders.findIndex(o => o.id === data.id);
+                            if (index !== -1) {
+                                if (!orders[index].lastModified || data.lastModified > orders[index].lastModified) {
+                                    orders[index] = data;
+                                }
+                            } else {
+                                orders.push(data);
+                            }
+                        }
+                        if (change.type === 'removed') {
+                            const data = change.doc.data();
+                            orders = orders.filter(o => o.id !== data.id);
+                        }
+                    });
+                    renderOrders();
+                    renderCalendar(currentDate);
+                    updateSelectedDatePanel(selectedDate);
+                    saveToLocalStorage();
+                });
+            unsubscribers.push(ordersUnsubscribe);
+
+            // Слушатель для ценовых категорий
+            const priceCategoriesUnsubscribe = db.collection('users').doc(userId).collection('priceCategories')
+                .onSnapshot((snapshot) => {
+                    snapshot.docChanges().forEach((change) => {
+                        if (change.type === 'added' || change.type === 'modified') {
+                            const data = change.doc.data();
+                            const index = priceCategories.findIndex(pc => pc.id === data.id);
+                            if (index !== -1) {
+                                priceCategories[index] = data;
+                            } else {
+                                priceCategories.push(data);
+                            }
+                        }
+                        if (change.type === 'removed') {
+                            const data = change.doc.data();
+                            priceCategories = priceCategories.filter(pc => pc.id !== data.id);
+                        }
+                    });
+                    renderPriceCategories();
+                    saveToLocalStorage();
+                });
+            unsubscribers.push(priceCategoriesUnsubscribe);
+
+            // Слушатель для настроек (categories, orderCounter)
+            const settingsUnsubscribe = db.collection('users').doc(userId)
+                .onSnapshot((doc) => {
+                    if (doc.exists) {
+                        const data = doc.data();
+                        if (data.categories) categories = data.categories;
+                        if (data.orderCounter) orderCounter = data.orderCounter;
+                        if (data.orderDrafts) orderDrafts = data.orderDrafts;
+                        updateEquipmentTabs();
+                        saveToLocalStorage();
+                    }
+                });
+            unsubscribers.push(settingsUnsubscribe);
+        }
+
+        async function loadFromFirebase() {
+            if (!currentUser) return;
+
+            const userId = currentUser.uid;
+            showNotification('Загрузка данных из облака...');
+
+            try {
+                // Загружаем настройки
+                const settingsDoc = await db.collection('users').doc(userId).get();
+                if (settingsDoc.exists) {
+                    const data = settingsDoc.data();
+                    if (data.categories) categories = data.categories;
+                    if (data.orderCounter) orderCounter = data.orderCounter;
+                    if (data.orderDrafts) orderDrafts = data.orderDrafts;
+                }
+
+                // Загружаем клиентов
+                const clientsSnapshot = await db.collection('users').doc(userId).collection('clients').get();
+                const firebaseClients = [];
+                clientsSnapshot.forEach(doc => {
+                    firebaseClients.push(doc.data());
+                });
+                if (firebaseClients.length > 0) {
+                    clients = firebaseClients;
+                }
+
+                // Загружаем оборудование
+                const equipmentSnapshot = await db.collection('users').doc(userId).collection('equipment').get();
+                const firebaseEquipment = [];
+                equipmentSnapshot.forEach(doc => {
+                    firebaseEquipment.push(doc.data());
+                });
+                if (firebaseEquipment.length > 0) {
+                    equipment = firebaseEquipment;
+                }
+
+                // Загружаем заказы
+                const ordersSnapshot = await db.collection('users').doc(userId).collection('orders').get();
+                const firebaseOrders = [];
+                ordersSnapshot.forEach(doc => {
+                    const data = doc.data();
+                    // Конвертируем Timestamp в Date
+                    data.startDate = data.startDate.toDate();
+                    data.endDate = data.endDate.toDate();
+                    data.createdAt = data.createdAt.toDate();
+                    firebaseOrders.push(data);
+                });
+                if (firebaseOrders.length > 0) {
+                    orders = firebaseOrders;
+                }
+
+                // Загружаем ценовые категории
+                const priceCategoriesSnapshot = await db.collection('users').doc(userId).collection('priceCategories').get();
+                const firebasePriceCategories = [];
+                priceCategoriesSnapshot.forEach(doc => {
+                    firebasePriceCategories.push(doc.data());
+                });
+                if (firebasePriceCategories.length > 0) {
+                    priceCategories = firebasePriceCategories;
+                }
+
+                showNotification('Данные загружены из облака');
+
+                // Обновляем UI
+                renderCalendar(currentDate);
+                updateSelectedDatePanel(selectedDate);
+                renderOrders();
+                renderClients();
+                renderEquipment();
+                renderPriceCategories();
+                updateSystemInfo();
+
+            } catch (error) {
+                console.error('Ошибка загрузки из Firebase:', error);
+                showNotification('Ошибка загрузки данных');
+            }
+        }
+
+        async function uploadInitialData() {
+            if (!currentUser) return;
+
+            const userId = currentUser.uid;
+            const batch = db.batch();
+
+            try {
+                // Проверяем, есть ли уже данные в Firebase
+                const settingsDoc = await db.collection('users').doc(userId).get();
+                if (!settingsDoc.exists) {
+                    // Загружаем все локальные данные в Firebase
+                    showNotification('Первичная синхронизация...');
+
+                    // Настройки
+                    batch.set(db.collection('users').doc(userId), {
+                        categories: categories,
+                        orderCounter: orderCounter,
+                        orderDrafts: orderDrafts,
+                        lastSync: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+
+                    // Клиенты
+                    clients.forEach(client => {
+                        const clientRef = db.collection('users').doc(userId).collection('clients').doc(String(client.id));
+                        batch.set(clientRef, {
+                            ...client,
+                            lastModified: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                    });
+
+                    // Оборудование
+                    equipment.forEach(item => {
+                        const equipmentRef = db.collection('users').doc(userId).collection('equipment').doc(String(item.id));
+                        batch.set(equipmentRef, {
+                            ...item,
+                            lastModified: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                    });
+
+                    // Заказы
+                    orders.forEach(order => {
+                        const orderRef = db.collection('users').doc(userId).collection('orders').doc(String(order.id));
+                        batch.set(orderRef, {
+                            ...order,
+                            lastModified: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                    });
+
+                    // Ценовые категории
+                    priceCategories.forEach(category => {
+                        const categoryRef = db.collection('users').doc(userId).collection('priceCategories').doc(String(category.id));
+                        batch.set(categoryRef, category);
+                    });
+
+                    await batch.commit();
+                    showNotification('Данные успешно синхронизированы');
+                }
+            } catch (error) {
+                console.error('Ошибка первичной синхронизации:', error);
+                showNotification('Ошибка синхронизации');
+            }
+        }
+
+        // Функция для сохранения в Firebase
+        async function saveToFirebase(collection, data) {
+            if (!currentUser || !syncEnabled) return;
+
+            const userId = currentUser.uid;
+
+            try {
+                if (collection === 'settings') {
+                    await db.collection('users').doc(userId).update({
+                        categories: categories,
+                        orderCounter: orderCounter,
+                        orderDrafts: orderDrafts,
+                        lastSync: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                } else {
+                    const docRef = db.collection('users').doc(userId).collection(collection).doc(String(data.id));
+                    await docRef.set({
+                        ...data,
+                        lastModified: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                }
+            } catch (error) {
+                console.error('Ошибка сохранения в Firebase:', error);
+            }
+        }
+
+        // Функция для удаления из Firebase
+        async function deleteFromFirebase(collection, id) {
+            if (!currentUser || !syncEnabled) return;
+
+            const userId = currentUser.uid;
+
+            try {
+                await db.collection('users').doc(userId).collection(collection).doc(String(id)).delete();
+            } catch (error) {
+                console.error('Ошибка удаления из Firebase:', error);
+            }
         }
 
         // ============= УСТАНОВКА ОБРАБОТЧИКОВ СОБЫТИЙ =============
@@ -4344,6 +5083,50 @@
                         closeModal(modalId);
                     }
                 });
+            });
+
+            // Обработка Enter в модальных окнах
+            document.getElementById('order-modal').addEventListener('keypress', function (e) {
+                if (e.key === 'Enter' && !e.target.matches('textarea')) {
+                    e.preventDefault();
+                    const btn = document.getElementById('create-order-btn');
+                    if (!btn.disabled) btn.click();
+                }
+            });
+
+            document.getElementById('client-modal').addEventListener('keypress', function (e) {
+                if (e.key === 'Enter' && !e.target.matches('textarea')) {
+                    e.preventDefault();
+                    document.getElementById('save-client-btn').click();
+                }
+            });
+
+            document.getElementById('equipment-add-modal').addEventListener('keypress', function (e) {
+                if (e.key === 'Enter' && !e.target.matches('textarea')) {
+                    e.preventDefault();
+                    document.getElementById('save-equipment-btn').click();
+                }
+            });
+
+            document.getElementById('equipment-detail-modal').addEventListener('keypress', function (e) {
+                if (e.key === 'Enter' && !e.target.matches('textarea')) {
+                    e.preventDefault();
+                    document.getElementById('save-equipment-btn-detail').click();
+                }
+            });
+
+            document.getElementById('price-category-modal').addEventListener('keypress', function (e) {
+                if (e.key === 'Enter' && !e.target.matches('textarea')) {
+                    e.preventDefault();
+                    savePriceCategory();
+                }
+            });
+
+            document.getElementById('category-modal').addEventListener('keypress', function (e) {
+                if (e.key === 'Enter' && !e.target.matches('textarea')) {
+                    e.preventDefault();
+                    document.getElementById('save-category-btn').click();
+                }
             });
         }
 
@@ -4561,6 +5344,19 @@
             renderOrders();
             renderClients();
             renderEquipment();
+            renderPriceCategories();
+
+            // Проверяем авторизацию Firebase
+            auth.onAuthStateChanged((user) => {
+                if (user) {
+                    currentUser = user;
+                    updateAuthUI();
+                    enableFirebaseSync();
+                } else {
+                    currentUser = null;
+                    updateAuthUI();
+                }
+            });
         }
 
         // Запуск приложения при загрузке страницы
@@ -4570,6 +5366,5 @@
         });
     </script>
 </body>
-
 
 </html>
