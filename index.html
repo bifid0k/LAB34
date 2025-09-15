@@ -1334,17 +1334,21 @@
         }
     </style>
 
-    <!-- Firebase SDKs -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <!-- Firebase App (the core Firebase SDK) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <!-- Firebase Auth -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <!-- Firebase Realtime Database -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
+
 </head>
 
 <body>
     <div class="app-container">
         <!-- Sidebar -->
         <div class="sidebar" id="sidebar">
-            <div class="sidebar-header">
+            <div class="sidebar-header">ы
                 <h1>Горный прокат</h1>
                 <p>Система управления прокатом</p>
             </div>
@@ -2154,14 +2158,6 @@
 
             // Firebase
             firebase: {
-                config: {
-                    apiKey: "AIzaSyBeVWYjvGiFvbs3ovqLYHZAyQqz8ArFj5E",
-                    authDomain: "active-and-positive.firebaseapp.com",
-                    projectId: "active-and-positive",
-                    storageBucket: "active-and-positive.firebasestorage.app",
-                    messagingSenderId: "418586546672",
-                    appId: "1:418586546672:web:a3e89dfcd000f0324e0d35"
-                },
                 auth: null,
                 db: null,
                 currentUser: null,
@@ -5790,45 +5786,37 @@
         // Firebase Module
         App.firebase = {
             init() {
+                const firebaseConfig = {
+                    apiKey: "AIzaSyBeVWYjvGiFvbs3ovqLYHZAyQqz8ArFj5E",
+                    authDomain: "active-and-positive.firebaseapp.com",
+                    projectId: "active-and-positive",
+                    storageBucket: "active-and-positive.firebasestorage.app",
+                    messagingSenderId: "418586546672",
+                    appId: "1:418586546672:web:a3e89dfcd000f0324e0d35"
+                };
+
                 try {
-                    // Проверяем, что Firebase загружен
-                    if (typeof firebase === 'undefined') {
-                        console.error('Firebase SDK not loaded');
-                        App.firebase.updateAuthUI();
-                        return;
-                    }
-
-                    // Инициализируем Firebase только если еще не инициализирован
-                    if (!firebase.apps || firebase.apps.length === 0) {
-                        firebase.initializeApp(App.firebase.config);
-                    }
-
+                    // Инициализируем Firebase с конфигурацией
+                    firebase.initializeApp(firebaseConfig);
+                    App.firebase.db = firebase.database();
                     App.firebase.auth = firebase.auth();
-                    App.firebase.db = firebase.firestore();
 
-                    App.firebase.auth.onAuthStateChanged((user) => {
-                        App.firebase.currentUser = user;
-                        App.firebase.updateAuthUI();
+                    // Проверяем авторизацию
+                    App.firebase.auth.onAuthStateChanged(user => {
                         if (user) {
-                            App.firebase.enableSync();
+                            App.firebase.currentUser = user;
+                            App.firebase.checkSyncEnabled();
+                            console.log('Firebase: User authenticated');
+                        } else {
+                            App.firebase.currentUser = null;
+                            App.firebase.syncEnabled = false;
+                            console.log('Firebase: No user authenticated');
                         }
                     });
                 } catch (error) {
                     console.error('Firebase initialization error:', error);
-                    // Показываем UI без авторизации
-                    const authContainer = document.getElementById('auth-container');
-                    if (authContainer) {
-                        authContainer.innerHTML = `
-                    <div style="padding: 16px; background: #fee2e2; border-radius: 8px;">
-                        <p style="margin-bottom: 12px; color: #dc2626;">
-                            Ошибка подключения к Firebase. Синхронизация недоступна.
-                        </p>
-                        <p style="font-size: 12px; color: #6c757d;">
-                            Проверьте подключение к интернету и перезагрузите страницу.
-                        </p>
-                    </div>
-                `;
-                    }
+                    // Отключаем синхронизацию при ошибке
+                    App.firebase.syncEnabled = false;
                 }
             },
 
