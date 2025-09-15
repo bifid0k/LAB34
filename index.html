@@ -5789,6 +5789,7 @@
                 const firebaseConfig = {
                     apiKey: "AIzaSyBeVWYjvGiFvbs3ovqLYHZAyQqz8ArFj5E",
                     authDomain: "active-and-positive.firebaseapp.com",
+                    databaseURL: "https://active-and-positive-default-rtdb.firebaseio.com",
                     projectId: "active-and-positive",
                     storageBucket: "active-and-positive.firebasestorage.app",
                     messagingSenderId: "418586546672",
@@ -5812,10 +5813,11 @@
                             App.firebase.syncEnabled = false;
                             console.log('Firebase: No user authenticated');
                         }
+                        // Обновляем UI после проверки авторизации
+                        App.firebase.updateAuthUI();
                     });
                 } catch (error) {
                     console.error('Firebase initialization error:', error);
-                    // Отключаем синхронизацию при ошибке
                     App.firebase.syncEnabled = false;
                 }
             },
