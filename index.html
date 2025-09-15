@@ -5820,6 +5820,23 @@
                 }
             },
 
+            checkSyncEnabled() {
+                if (App.firebase.currentUser) {
+                    const userRef = App.firebase.db.ref(`users/${App.firebase.currentUser.uid}/settings/syncEnabled`);
+                    userRef.once('value').then(snapshot => {
+                        App.firebase.syncEnabled = snapshot.val() !== false;
+                        if (App.firebase.syncEnabled) {
+                            App.firebase.loadFromFirebase();
+                        }
+                    }).catch(error => {
+                        console.error('Error checking sync settings:', error);
+                        App.firebase.syncEnabled = false;
+                    });
+                } else {
+                    App.firebase.syncEnabled = false;
+                }
+            },
+
             signInWithGoogle() {
                 const provider = new firebase.auth.GoogleAuthProvider();
                 App.firebase.auth.signInWithPopup(provider)
