@@ -646,7 +646,7 @@
             color: var(--warning-color);
         }
 
-        .status-maintenance {
+        .status-sold {
             background: #e0e7ff;
             color: #4f46e5;
         }
@@ -1066,7 +1066,6 @@
 
         .equipment-list {
             display: grid;
-            gap: 12px;
         }
 
         /* Equipment Calendar */
@@ -1348,7 +1347,7 @@
     <div class="app-container">
         <!-- Sidebar -->
         <div class="sidebar" id="sidebar">
-            <div class="sidebar-header">ы
+            <div class="sidebar-header">
                 <h1>Горный прокат</h1>
                 <p>Система управления прокатом</p>
             </div>
@@ -1916,6 +1915,7 @@
                 <div class="form-group">
                     <label>Телефон *</label>
                     <input type="tel" id="client-phone" required value="+7">
+                    <small id="phone-hint" style="color: #6c757d; display: none;"></small>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
@@ -2060,7 +2060,8 @@
                         <label>Статус</label>
                         <select id="equipment-status">
                             <option value="available">Доступно</option>
-                            <option value="maintenance">На обслуживании</option>
+                            <option value="for_sale">На продажу</option>
+                            <option value="sold">Продано</option>
                             <option value="damaged">Повреждено</option>
                         </select>
                     </div>
@@ -2124,6 +2125,10 @@
                     <label>Цена последующих суток (₽)</label>
                     <input type="number" id="price-category-next" step="10" min="0">
                 </div>
+                <div class="form-group">
+                    <label>Цвет категории</label>
+                    <input type="color" id="price-category-color" value="#5e72e4">
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-danger" id="delete-price-category-btn" style="display: none;"
@@ -2153,7 +2158,10 @@
                 bufferHours: 2,
                 currentStatusFilter: null,
                 orderCreatedSuccessfully: false,
-                currentClientSection: null
+                currentClientSection: null,
+                equipmentStatusFilter: null,
+                preservedStartDate: null,
+                preservedEndDate: null
             },
 
             // Firebase
@@ -2184,7 +2192,6 @@
 
         const DAY_HEADERS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
-        // Utility Functions
         App.utils = {
             timeToMinutes(time) {
                 const [hours, minutes] = time.split(':').map(Number);
@@ -2217,17 +2224,6 @@
                 const month = String(today.getMonth() + 1).padStart(2, '0');
                 const day = String(today.getDate()).padStart(2, '0');
                 return `${year}.${month}.${day}-${App.state.orderCounter++}`;
-            },
-
-            getEquipmentStatusName(status) {
-                const statusNames = {
-                    'available': 'Доступно',
-                    'rented': 'В прокате',
-                    'ready': 'Готово к выдаче',
-                    'maintenance': 'На обслуживании',
-                    'damaged': 'Повреждено'
-                };
-                return statusNames[status] || status;
             }
         };
 
@@ -2355,8 +2351,10 @@
 
                 App.state.currentEditingOrder = null;
                 App.state.currentEditingClient = null;
-                App.state.selectedStartDate = null;
-                App.state.selectedEndDate = null;
+                if (modalId === 'order-modal') {
+                    App.state.selectedStartDate = null;
+                    App.state.selectedEndDate = null;
+                }
             }
         };
 
@@ -2529,8 +2527,8 @@
 
             updateDayEquipment(date) {
                 const dateStr = date.toDateString();
-                let pickupEquipment = [];
-                let returnEquipment = [];
+                let pickupGroups = {};
+                let returnGroups = {};
 
                 App.db.orders.forEach(order => {
                     if (order.status === 'cancelled' || order.status === 'completed') return;
@@ -2542,19 +2540,25 @@
                     if (startDate === dateStr) {
                         order.clients.forEach(client => {
                             const clientData = App.db.clients.find(c => c.id === client.clientId);
+                            const key = `${order.id}_${client.clientId}`;
+
+                            if (!pickupGroups[key]) {
+                                pickupGroups[key] = {
+                                    client: clientData?.name || 'Неизвестный клиент',
+                                    time: order.pickupTime || '10:00',
+                                    equipment: []
+                                };
+                            }
+
                             if (client.equipment && Array.isArray(client.equipment)) {
                                 client.equipment.forEach(eq => {
                                     const equipmentData = App.db.equipment.find(e => e.id === eq.equipmentId);
                                     if (equipmentData) {
-                                        const isChecked = order.equipmentStatuses &&
-                                            order.equipmentStatuses[eq.equipmentId] === 'ready';
-                                        pickupEquipment.push({
-                                            client: clientData?.name || 'Неизвестный клиент',
-                                            equipment: equipmentData.name,
-                                            orderId: order.id,
+                                        pickupGroups[key].equipment.push({
+                                            name: equipmentData.name,
                                             equipmentId: eq.equipmentId,
-                                            time: order.pickupTime || '10:00',
-                                            checked: isChecked
+                                            orderId: order.id,
+                                            checked: order.equipmentStatuses && order.equipmentStatuses[eq.equipmentId] === 'ready'
                                         });
                                     }
                                 });
@@ -2565,19 +2569,25 @@
                     if (endDate === dateStr) {
                         order.clients.forEach(client => {
                             const clientData = App.db.clients.find(c => c.id === client.clientId);
+                            const key = `${order.id}_${client.clientId}`;
+
+                            if (!returnGroups[key]) {
+                                returnGroups[key] = {
+                                    client: clientData?.name || 'Неизвестный клиент',
+                                    time: order.returnTime || '18:00',
+                                    equipment: []
+                                };
+                            }
+
                             if (client.equipment && Array.isArray(client.equipment)) {
                                 client.equipment.forEach(eq => {
                                     const equipmentData = App.db.equipment.find(e => e.id === eq.equipmentId);
                                     if (equipmentData) {
-                                        const isChecked = order.equipmentStatuses &&
-                                            order.equipmentStatuses[eq.equipmentId] === 'returned';
-                                        returnEquipment.push({
-                                            client: clientData?.name || 'Неизвестный клиент',
-                                            equipment: equipmentData.name,
-                                            orderId: order.id,
+                                        returnGroups[key].equipment.push({
+                                            name: equipmentData.name,
                                             equipmentId: eq.equipmentId,
-                                            time: order.returnTime || '18:00',
-                                            checked: isChecked
+                                            orderId: order.id,
+                                            checked: order.equipmentStatuses && order.equipmentStatuses[eq.equipmentId] === 'returned'
                                         });
                                     }
                                 });
@@ -2586,38 +2596,55 @@
                     }
                 });
 
-                pickupEquipment.sort((a, b) => App.utils.timeToMinutes(a.time) - App.utils.timeToMinutes(b.time));
-                returnEquipment.sort((a, b) => App.utils.timeToMinutes(a.time) - App.utils.timeToMinutes(b.time));
+                // Сортировка по времени
+                const pickupSorted = Object.values(pickupGroups).sort((a, b) =>
+                    App.utils.timeToMinutes(a.time) - App.utils.timeToMinutes(b.time)
+                );
+                const returnSorted = Object.values(returnGroups).sort((a, b) =>
+                    App.utils.timeToMinutes(a.time) - App.utils.timeToMinutes(b.time)
+                );
 
+                // Отрисовка выдачи
                 const pickupContent = document.getElementById('pickup-content');
-                pickupContent.innerHTML = pickupEquipment.length === 0 ?
+                pickupContent.innerHTML = pickupSorted.length === 0 ?
                     '<p style="text-align: center; color: #6c757d; padding: 24px;">Нет оборудования для подготовки</p>' :
-                    pickupEquipment.map(item => `
-                        <div class="equipment-item">
-                            <input type="checkbox" ${item.checked ? 'checked' : ''} 
-                                   onchange="App.orders.updateEquipmentStatus(${item.equipmentId}, 'ready', ${item.orderId})">
-                            <div class="equipment-info">
-                                <div style="font-weight: 500;">${item.equipment}</div>
-                                <div style="font-size: 12px; color: #6c757d;">${item.client}</div>
-                                <div class="equipment-time">Время выдачи: ${item.time}</div>
-                            </div>
+                    pickupSorted.map(group => `
+            <div style="margin-bottom: 16px; padding: 12px; background: #f8f9fa; border-radius: 8px;">
+                <div style="font-weight: 500; margin-bottom: 8px; color: #495057;">
+                    ${group.client} - Время выдачи: ${group.time}
+                </div>
+                ${group.equipment.map(item => `
+                    <div class="equipment-item">
+                        <input type="checkbox" ${item.checked ? 'checked' : ''} 
+                               onchange="App.orders.updateEquipmentStatus(${item.equipmentId}, 'ready', ${item.orderId})">
+                        <div class="equipment-info">
+                            <div style="font-weight: 500;">${item.name}</div>
                         </div>
-                    `).join('');
+                    </div>
+                `).join('')}
+            </div>
+        `).join('');
 
+                // Отрисовка возврата
                 const returnContent = document.getElementById('return-content');
-                returnContent.innerHTML = returnEquipment.length === 0 ?
+                returnContent.innerHTML = returnSorted.length === 0 ?
                     '<p style="text-align: center; color: #6c757d; padding: 24px;">Нет оборудования для приёма</p>' :
-                    returnEquipment.map(item => `
-                        <div class="equipment-item">
-                            <input type="checkbox" ${item.checked ? 'checked' : ''} 
-                                   onchange="App.orders.updateEquipmentStatus(${item.equipmentId}, 'returned', ${item.orderId})">
-                            <div class="equipment-info">
-                                <div style="font-weight: 500;">${item.equipment}</div>
-                                <div style="font-size: 12px; color: #6c757d;">${item.client}</div>
-                                <div class="equipment-time">Время возврата: ${item.time}</div>
-                            </div>
+                    returnSorted.map(group => `
+            <div style="margin-bottom: 16px; padding: 12px; background: #f8f9fa; border-radius: 8px;">
+                <div style="font-weight: 500; margin-bottom: 8px; color: #495057;">
+                    ${group.client} - Время возврата: ${group.time}
+                </div>
+                ${group.equipment.map(item => `
+                    <div class="equipment-item">
+                        <input type="checkbox" ${item.checked ? 'checked' : ''} 
+                               onchange="App.orders.updateEquipmentStatus(${item.equipmentId}, 'returned', ${item.orderId})">
+                        <div class="equipment-info">
+                            <div style="font-weight: 500;">${item.name}</div>
                         </div>
-                    `).join('');
+                    </div>
+                `).join('')}
+            </div>
+        `).join('');
 
                 App.calendar.checkOverdueEquipment(date);
             },
@@ -2994,71 +3021,139 @@
                 document.getElementById('order-notes').value = order.notes;
 
                 App.orders.clearClients();
-                order.clients.forEach(clientOrder => {
-                    App.orders.addClientToOrder();
-                    const clientSection = document.querySelector('.client-section:last-child');
-                    const client = App.db.clients.find(c => c.id === clientOrder.clientId);
-
-                    if (client) {
-                        const clientInput = clientSection.querySelector('.client-search');
-                        clientInput.value = client.name;
-                        clientInput.dataset.clientId = clientOrder.clientId;
-
-                        App.orders.updateEquipmentCategories(clientSection);
-
-                        // Определяем тип основного оборудования или вспомогательного
-                        const mainEquipment = clientOrder.equipment.find(eq => {
-                            const item = App.db.equipment.find(e => e.id === eq.equipmentId);
-                            return item && App.db.categories.find(c => c.id === item.category && c.type === 'main');
-                        });
-
-                        if (mainEquipment) {
-                            const mainItem = App.db.equipment.find(e => e.id === mainEquipment.equipmentId);
-                            const mainTypeSelect = clientSection.querySelector('select[data-category="main-type"]');
-                            if (mainTypeSelect && mainItem) {
-                                mainTypeSelect.value = mainItem.category;
-                                App.orders.selectMainEquipment(mainTypeSelect);
-                            }
+                if (order.clients && order.clients.length > 0) {
+                    // Сначала создаем всех клиентов
+                    order.clients.forEach((clientOrder, index) => {
+                        if (index === 0) {
+                            App.orders.addClientToOrder();
                         } else {
-                            // Если нет основного оборудования, проверяем вспомогательное
-                            const hasSnowboardAux = clientOrder.equipment.some(eq => {
-                                const item = App.db.equipment.find(e => e.id === eq.equipmentId);
-                                return item && (item.category === 'snowboard-boots' || item.category === 'bindings');
-                            });
-
-                            const hasSkiAux = clientOrder.equipment.some(eq => {
-                                const item = App.db.equipment.find(e => e.id === eq.equipmentId);
-                                return item && (item.category === 'ski-boots' || item.category === 'poles');
-                            });
-
-                            // Устанавливаем соответствующий тип
-                            const mainTypeSelect = clientSection.querySelector('select[data-category="main-type"]');
-                            if (mainTypeSelect) {
-                                if (hasSnowboardAux) {
-                                    mainTypeSelect.value = 'snowboards';
-                                    App.orders.selectMainEquipment(mainTypeSelect);
-                                } else if (hasSkiAux) {
-                                    mainTypeSelect.value = 'skis';
-                                    App.orders.selectMainEquipment(mainTypeSelect);
-                                }
-                            }
+                            App.orders.addClientToOrder();
                         }
+                    });
 
-                        // Загружаем выбранное оборудование с задержкой
-                        setTimeout(() => {
+                    // Заполняем данные с правильной последовательностью
+                    setTimeout(() => {
+                        const clientSections = document.querySelectorAll('.client-section');
+
+                        order.clients.forEach((clientOrder, clientIndex) => {
+                            const clientSection = clientSections[clientIndex];
+                            if (!clientSection) return;
+
+                            const client = App.db.clients.find(c => c.id === clientOrder.clientId);
+                            if (!client) return;
+
+                            // Устанавливаем клиента
+                            const input = clientSection.querySelector('.client-search');
+                            input.value = client.name;
+                            input.dataset.clientId = client.id;
+
+                            // Обновляем категории оборудования
+                            App.orders.updateEquipmentCategories(clientSection);
+
+                            // Определяем основной тип из оборудования
+                            let mainType = null;
                             clientOrder.equipment.forEach(eq => {
-                                const equipmentItem = App.db.equipment.find(e => e.id === eq.equipmentId);
-                                if (equipmentItem) {
-                                    const categorySelect = clientSection.querySelector(`select[data-category="${equipmentItem.category}"]`);
-                                    if (categorySelect) {
-                                        categorySelect.value = eq.equipmentId;
+                                const item = App.db.equipment.find(e => e.id === eq.equipmentId);
+                                if (item) {
+                                    if (item.category === 'snowboards') mainType = 'snowboards';
+                                    else if (item.category === 'skis') mainType = 'skis';
+                                    else if (!mainType && ['snowboard-boots', 'bindings'].includes(item.category)) {
+                                        mainType = 'snowboards';
+                                    } else if (!mainType && ['ski-boots', 'poles'].includes(item.category)) {
+                                        mainType = 'skis';
                                     }
                                 }
                             });
-                            App.orders.calculateTotal();
-                        }, 100);
-                    }
-                });
+
+                            // Устанавливаем основной тип и обновляем поля
+                            if (mainType) {
+                                const mainTypeSelect = clientSection.querySelector('select[data-category="main-type"]');
+                                if (mainTypeSelect) {
+                                    mainTypeSelect.value = mainType;
+                                    App.orders.selectMainEquipment(mainTypeSelect);
+                                }
+                            }
+
+                            // Группируем оборудование по категориям
+                            const equipmentByCategory = {};
+                            clientOrder.equipment.forEach(eq => {
+                                const item = App.db.equipment.find(e => e.id === eq.equipmentId);
+                                if (item) {
+                                    if (!equipmentByCategory[item.category]) {
+                                        equipmentByCategory[item.category] = [];
+                                    }
+                                    equipmentByCategory[item.category].push(eq.equipmentId);
+                                }
+                            });
+
+                            // Добавляем поля и заполняем значения с задержкой
+                            setTimeout(() => {
+                                Object.keys(equipmentByCategory).forEach(category => {
+                                    const equipmentIds = equipmentByCategory[category];
+
+                                    // Создаем дополнительные поля если нужно
+                                    for (let i = 0; i < equipmentIds.length; i++) {
+                                        console.log(`Ищем кнопку для категории: ${category}`);
+
+                                        // Ищем кнопку в разных возможных контейнерах
+                                        let addBtn = null;
+
+                                        // Для основного оборудования
+                                        if (category === mainType) {
+                                            addBtn = clientSection.querySelector('.main-equipment-container button[onclick*="addEquipmentField"]');
+                                            console.log('Поиск в main-equipment-container:', addBtn);
+                                        }
+
+                                        // Для вспомогательных категорий
+                                        if (!addBtn) {
+                                            addBtn = clientSection.querySelector(`.category-section[data-category="${category}"] button[onclick*="addEquipmentField"]`);
+                                            console.log(`Поиск в category-section[data-category="${category}"]:`, addBtn);
+                                        }
+
+                                        // Для вторичных категорий
+                                        if (!addBtn) {
+                                            const categoryHeader = clientSection.querySelector(`.equipment-fields[data-category="${category}"]`);
+                                            if (categoryHeader) {
+                                                addBtn = categoryHeader.parentElement.querySelector('button[onclick*="addEquipmentField"]');
+                                                console.log(`Поиск через equipment-fields parent:`, addBtn);
+                                            }
+                                        }
+
+                                        console.log(`Кнопка найдена: ${addBtn ? 'Да' : 'Нет'}`);
+
+                                        if (addBtn) {
+                                            console.log(`Добавляем поле для категории ${category} через кнопку:`, addBtn);
+                                            App.orders.addEquipmentField(addBtn, category);
+                                        } else {
+                                            console.log(`ОШИБКА: Кнопка не найдена для категории ${category}`);
+                                        }
+                                    }
+
+                                    // Заполняем все селекты этой категории
+                                    setTimeout(() => {
+                                        const selects = clientSection.querySelectorAll(`select[data-category="${category}"]:not([data-category="main-type"])`);
+
+                                        console.log(`Категория: ${category}`);
+                                        console.log(`Найдено селектов: ${selects.length}`);
+                                        console.log(`Нужно заполнить ID: ${equipmentIds.length}`, equipmentIds);
+
+                                        equipmentIds.forEach((eqId, idx) => {
+                                            if (selects[idx]) {
+                                                console.log(`Заполняем селект ${idx} значением ${eqId}`);
+                                                selects[idx].value = eqId;
+                                                App.orders.selectEquipmentItem(selects[idx]);
+                                            } else {
+                                                console.log(`Селект ${idx} не найден для значения ${eqId}`);
+                                            }
+                                        });
+                                    }, 200);
+                                });
+
+                                App.orders.calculateTotal();
+                            }, 300);
+                        });
+                    }, 100);
+                }
 
                 App.orders.updateRemainingAmount();
             },
@@ -3177,184 +3272,198 @@
                 const mainCategories = App.db.categories.filter(c => c.type === 'main');
                 const secondaryCategories = App.db.categories.filter(c => c.type === 'secondary');
 
-                const getAvailableEquipment = (categoryId) => {
-                    return App.db.equipment.filter(e => {
-                        if (e.category !== categoryId) return false;
-
-                        if (e.status === 'damaged') return false;
-
-                        const isAvailable = App.equipment.checkAvailability(
-                            e.id,
-                            App.state.selectedStartDate,
-                            App.state.selectedEndDate,
-                            App.state.currentEditingOrder
-                        );
-
-                        const isUsedInCurrentOrder = App.state.currentEditingOrder && App.db.orders.some(order =>
-                            order.id === App.state.currentEditingOrder &&
-                            order.clients.some(client =>
-                                client.equipment.some(eq => eq.equipmentId === e.id)
-                            )
-                        );
-
-                        return isAvailable || isUsedInCurrentOrder;
-                    });
-                };
-
-                const getEquipmentPrice = (eq) => {
-                    if (eq.priceCategoryId) {
-                        const category = App.db.priceCategories.find(pc => pc.id === eq.priceCategoryId);
-                        return category ? category.dailyPrice : (eq.dailyPrice || 0);
-                    }
-                    return eq.dailyPrice || 0;
-                };
-
+                // Создаём только кнопки для категорий
                 let html = `
-                    <div class="equipment-category">
-                        <label>Тип снаряжения</label>
-                        <select data-category="main-type" onchange="App.orders.selectMainEquipment(this)">
-                            <option value="">Выберите...</option>
-                            ${mainCategories.map(cat => `<option value="${cat.id}">${cat.name}</option>`).join('')}
-                        </select>
+        <div class="equipment-category">
+            <label>Тип снаряжения</label>
+            <select data-category="main-type" onchange="App.orders.selectMainEquipment(this)">
+                <option value="">Выберите...</option>
+                ${mainCategories.map(cat => `<option value="${cat.id}">${cat.name}</option>`).join('')}
+            </select>
+        </div>
+        
+        <div class="main-equipment-container" style="display: none;">
+            <div class="category-header" style="display: flex; justify-content: space-between; align-items: center; margin: 16px 0 8px;">
+                <label class="main-category-label">Основное оборудование</label>
+                <button type="button" onclick="App.orders.addEquipmentField(this, 'main')" class="btn btn-small" style="background: #28a745;">
+                    <span class="material-icons" style="font-size: 16px;">add</span>
+                </button>
+            </div>
+            <div class="main-equipment-fields"></div>
+        </div>
+        
+        <div class="auxiliary-container" style="display: none;">
+            <div class="auxiliary-categories-buttons"></div>
+        </div>
+        
+        <div class="secondary-container">
+            ${secondaryCategories.map(cat => `
+                <div class="category-section" data-category="${cat.id}">
+                    <div class="category-header" style="display: flex; justify-content: space-between; align-items: center; margin: 16px 0 8px;">
+                        <label>${cat.name}</label>
+                        <button type="button" onclick="App.orders.addEquipmentField(this, '${cat.id}')" class="btn btn-small" style="background: #28a745;">
+                            <span class="material-icons" style="font-size: 16px;">add</span>
+                        </button>
                     </div>
-                    
-                    <div class="main-equipment-category" style="display: none;"></div>
-                    
-                    <div class="auxiliary-categories"></div>
-                    
-                    ${secondaryCategories.map(cat => `
-                        <div class="equipment-category">
-                            <label>${cat.name}</label>
-                            <select data-category="${cat.id}" onchange="App.orders.selectEquipmentItem(this)">
-                                <option value="">Не выбрано</option>
-                                ${getAvailableEquipment(cat.id).map(eq => `
-                                    <option value="${eq.id}">${eq.name} - ${getEquipmentPrice(eq)}₽/день</option>
-                                `).join('')}
-                            </select>
-                        </div>
-                    `).join('')}
-                `;
+                    <div class="equipment-fields" data-category="${cat.id}"></div>
+                </div>
+            `).join('')}
+        </div>
+    `;
 
                 equipmentDiv.innerHTML = html;
+            },
+
+            getEquipmentColor(eq) {
+                if (eq.priceCategoryId) {
+                    const priceCategory = App.db.priceCategories.find(pc => pc.id === eq.priceCategoryId);
+                    if (priceCategory && priceCategory.color) {
+                        const hex = priceCategory.color.replace('#', '');
+                        const r = parseInt(hex.substr(0, 2), 16);
+                        const g = parseInt(hex.substr(2, 2), 16);
+                        const b = parseInt(hex.substr(4, 2), 16);
+                        return `background: rgba(${r}, ${g}, ${b}, 0.15);`;
+                    }
+                }
+                return '';
+            },
+
+            addEquipmentField(button, categoryId) {
+                const clientSection = button.closest('.client-section');
+                const clientId = parseInt(clientSection.querySelector('.client-search').dataset.clientId);
+                const client = App.db.clients.find(c => c.id === clientId);
+
+                let container;
+                if (categoryId === 'main') {
+                    const mainType = clientSection.querySelector('select[data-category="main-type"]').value;
+                    if (!mainType) return;
+                    categoryId = mainType;
+                    container = clientSection.querySelector('.main-equipment-fields');
+                } else if (categoryId === 'snowboards' || categoryId === 'skis') {
+                    container = clientSection.querySelector('.main-equipment-fields');
+                } else {
+                    container = clientSection.querySelector(`.equipment-fields[data-category="${categoryId}"]`);
+                }
+
+                const fieldId = `field_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+                const availableEquipment = App.orders.getAvailableForCategory(categoryId, clientSection, fieldId);
+                const recommended = availableEquipment.filter(e =>
+                    App.equipment.getRecommended(client, categoryId).some(r => r.id === e.id)
+                );
+                const other = availableEquipment.filter(e => !recommended.some(r => r.id === e.id));
+
+                const fieldHtml = `
+    <div class="equipment-field-wrapper" data-field-id="${fieldId}" style="display: flex; gap: 8px; margin-bottom: 8px;">
+        <select data-category="${categoryId}" data-field-id="${fieldId}" onchange="App.orders.selectEquipmentItem(this)" 
+                style="flex: 1; padding: 12px 14px; border: 1px solid var(--border-color); 
+                       border-radius: var(--border-radius); font-size: 14px; font-family: inherit; 
+                       transition: all 0.2s; background: white; cursor: pointer;">
+            <option value="">Выберите...</option>
+            ${recommended.length > 0 ? `
+                <optgroup label="➤ Рекомендовано">
+                    ${recommended.map(eq => {
+                    const color = App.orders.getEquipmentColor(eq);
+                    return `<option value="${eq.id}" style="${color}">✓ ${eq.name} - ${App.orders.getPrice(eq)}₽/день</option>`;
+                }).join('')}
+                </optgroup>
+            ` : ''}
+            ${other.length > 0 ? `
+                <optgroup label="Все доступные">
+                    ${other.map(eq => {
+                    const color = App.orders.getEquipmentColor(eq);
+                    return `<option value="${eq.id}" style="${color}">${eq.name} - ${App.orders.getPrice(eq)}₽/день</option>`;
+                }).join('')}
+                </optgroup>
+            ` : ''}
+        </select>
+        <button type="button" onclick="App.orders.removeEquipmentField('${fieldId}')" 
+                class="btn btn-small" style="background: #dc3545; padding: 8px; min-width: 32px;">
+            <span class="material-icons" style="font-size: 16px;">close</span>
+        </button>
+    </div>
+`;
+
+                container.insertAdjacentHTML('beforeend', fieldHtml);
+                App.orders.calculateTotal();
+            },
+
+            removeEquipmentField(fieldId) {
+                const field = document.querySelector(`[data-field-id="${fieldId}"]`);
+                if (field) {
+                    field.remove();
+                    App.orders.calculateTotal();
+                    App.orders.validateForm();
+                }
+            },
+
+            getAvailableForCategory(categoryId, clientSection, currentFieldId = null) {
+                return App.db.equipment.filter(e => {
+                    if (e.category !== categoryId) return false;
+                    if (e.status === 'damaged' || e.status === 'sold') return false;
+
+                    const isAvailable = App.equipment.checkAvailability(
+                        e.id,
+                        App.state.selectedStartDate,
+                        App.state.selectedEndDate,
+                        App.state.currentEditingOrder,
+                        currentFieldId
+                    );
+
+                    const isUsedInCurrentOrder = App.state.currentEditingOrder && App.db.orders.some(order =>
+                        order.id === App.state.currentEditingOrder &&
+                        order.clients.some(client =>
+                            client.equipment.some(eq => eq.equipmentId === e.id)
+                        )
+                    );
+
+                    return isAvailable || isUsedInCurrentOrder;
+                });
+            },
+
+            getPrice(eq) {
+                if (eq.priceCategoryId) {
+                    const cat = App.db.priceCategories.find(pc => pc.id === eq.priceCategoryId);
+                    return cat ? cat.dailyPrice : (eq.dailyPrice || 0);
+                }
+                return eq.dailyPrice || 0;
             },
 
             selectMainEquipment(select) {
                 const categoryId = select.value;
                 const clientSection = select.closest('.client-section');
-                const mainEquipmentDiv = clientSection.querySelector('.main-equipment-category');
-                const auxiliaryDiv = clientSection.querySelector('.auxiliary-categories');
-
-                const existingWarning = select.parentElement.querySelector('.availability-warning');
-                if (existingWarning) {
-                    existingWarning.remove();
-                }
-
-                select.style.borderColor = '';
-                select.style.boxShadow = '';
+                const mainContainer = clientSection.querySelector('.main-equipment-container');
+                const auxiliaryContainer = clientSection.querySelector('.auxiliary-container');
 
                 if (!categoryId) {
-                    mainEquipmentDiv.style.display = 'none';
-                    mainEquipmentDiv.innerHTML = '';
-                    auxiliaryDiv.innerHTML = '';
+                    mainContainer.style.display = 'none';
+                    auxiliaryContainer.style.display = 'none';
+                    clientSection.querySelector('.main-equipment-fields').innerHTML = '';
+                    clientSection.querySelector('.auxiliary-categories-buttons').innerHTML = '';
                     return;
                 }
 
-                const clientId = parseInt(clientSection.querySelector('.client-search').dataset.clientId);
-                const client = App.db.clients.find(c => c.id === clientId);
-
-                const getAvailableEquipment = (catId) => {
-                    return App.db.equipment.filter(e => {
-                        if (e.category !== catId) return false;
-                        const isAvailable = App.equipment.checkAvailability(
-                            e.id,
-                            App.state.selectedStartDate,
-                            App.state.selectedEndDate,
-                            App.state.currentEditingOrder
-                        );
-                        const isUsedInCurrentOrder = App.state.currentEditingOrder && App.db.orders.some(order =>
-                            order.id === App.state.currentEditingOrder &&
-                            order.clients.some(client =>
-                                client.equipment.some(eq => eq.equipmentId === e.id)
-                            )
-                        );
-                        return isAvailable || isUsedInCurrentOrder;
-                    });
-                };
-
-                const getPrice = (eq) => {
-                    if (eq.priceCategoryId) {
-                        const cat = App.db.priceCategories.find(pc => pc.id === eq.priceCategoryId);
-                        return cat ? cat.dailyPrice : (eq.dailyPrice || 0);
-                    }
-                    return eq.dailyPrice || 0;
-                };
-
-                const allEquipment = getAvailableEquipment(categoryId);
-                const recommendedIds = App.equipment.getRecommended(client, categoryId).map(e => e.id);
-                const recommended = allEquipment.filter(e => recommendedIds.includes(e.id));
-                const other = allEquipment.filter(e => !recommendedIds.includes(e.id));
-
-                other.sort((a, b) => {
-                    if (a.length && b.length) return b.length - a.length;
-                    if (a.size && b.size) return a.size - b.size;
-                    return 0;
-                });
-
-                mainEquipmentDiv.style.display = 'block';
-                mainEquipmentDiv.innerHTML = `
-                    <div class="equipment-category">
-                        <label>Выберите ${App.db.categories.find(c => c.id === categoryId)?.name}</label>
-                        <select data-category="${categoryId}" onchange="App.orders.selectEquipmentItem(this)">
-                            <option value="">Выберите...</option>
-                            ${recommended.length > 0 ? `
-                                <optgroup label="➤ Рекомендовано">
-                                    ${recommended.map(eq => `
-                                        <option value="${eq.id}">✓ ${eq.name} - ${getPrice(eq)}₽/день</option>
-                                    `).join('')}
-                                </optgroup>
-                            ` : ''}
-                            ${other.length > 0 ? `
-                                <optgroup label="Все доступные">
-                                    ${other.map(eq => `
-                                        <option value="${eq.id}">${eq.name} - ${getPrice(eq)}₽/день</option>
-                                    `).join('')}
-                                </optgroup>
-                            ` : ''}
-                        </select>
-                    </div>
-                `;
+                mainContainer.style.display = 'block';
+                clientSection.querySelector('.main-category-label').textContent = App.db.categories.find(c => c.id === categoryId)?.name || '';
+                clientSection.querySelector('.main-equipment-fields').innerHTML = '';
 
                 const auxiliaryCategories = App.db.categories.filter(c => c.type === 'auxiliary' && c.parent === categoryId);
+                if (auxiliaryCategories.length > 0) {
+                    auxiliaryContainer.style.display = 'block';
+                    auxiliaryContainer.querySelector('.auxiliary-categories-buttons').innerHTML = auxiliaryCategories.map(cat => `
+            <div class="category-section" data-category="${cat.id}">
+                <div class="category-header" style="display: flex; justify-content: space-between; align-items: center; margin: 16px 0 8px;">
+                    <label>${cat.name}</label>
+                    <button type="button" onclick="App.orders.addEquipmentField(this, '${cat.id}')" class="btn btn-small" style="background: #28a745;">
+                        <span class="material-icons" style="font-size: 16px;">add</span>
+                    </button>
+                </div>
+                <div class="equipment-fields" data-category="${cat.id}"></div>
+            </div>
+        `).join('');
+                }
 
-                auxiliaryDiv.innerHTML = auxiliaryCategories.map(cat => {
-                    const catEquipment = getAvailableEquipment(cat.id);
-                    const catRecommended = App.equipment.getRecommended(client, cat.id);
-                    const catRecommendedIds = catRecommended.map(e => e.id);
-                    const catOther = catEquipment.filter(e => !catRecommendedIds.includes(e.id));
-
-                    return `
-                        <div class="equipment-category">
-                            <label>${cat.name}</label>
-                            <select data-category="${cat.id}" onchange="App.orders.selectEquipmentItem(this)">
-                                <option value="">Не выбрано</option>
-                                ${catRecommended.length > 0 ? `
-                                    <optgroup label="➤ Рекомендовано">
-                                        ${catRecommended.map(eq => `
-                                            <option value="${eq.id}">✓ ${eq.name} - ${getPrice(eq)}₽/день</option>
-                                        `).join('')}
-                                    </optgroup>
-                                ` : ''}
-                                ${catOther.length > 0 ? `
-                                    <optgroup label="Все доступные">
-                                        ${catOther.map(eq => `
-                                            <option value="${eq.id}">${eq.name} - ${getPrice(eq)}₽/день</option>
-                                        `).join('')}
-                                    </optgroup>
-                                ` : ''}
-                            </select>
-                        </div>
-                    `;
-                }).join('');
+                App.orders.validateForm();
             },
 
             selectEquipmentItem(select) {
@@ -3368,11 +3477,14 @@
 
                 if (select.value && App.state.selectedStartDate && App.state.selectedEndDate) {
                     const equipmentId = parseInt(select.value);
+                    const fieldId = select.dataset.fieldId || null;
+
                     const isAvailable = App.equipment.checkAvailability(
                         equipmentId,
                         App.state.selectedStartDate,
                         App.state.selectedEndDate,
-                        App.state.currentEditingOrder
+                        App.state.currentEditingOrder,
+                        fieldId
                     );
 
                     if (!isAvailable) {
@@ -3398,7 +3510,16 @@
             openNewClientModal(button) {
                 const clientSection = button.closest('.client-section');
                 App.state.currentClientSection = clientSection;
+
+                App.state.preservedStartDate = App.state.selectedStartDate;
+                App.state.preservedEndDate = App.state.selectedEndDate;
+
+                const freeNumber = App.clients.findFreeClientNumber();
                 App.clients.openModal();
+
+                setTimeout(() => {
+                    document.getElementById('client-name').value = `Клиент ${freeNumber}`;
+                }, 50);
             },
 
             renderDatePicker() {
@@ -3512,7 +3633,6 @@
                         App.orders.addClientToOrder();
                     }
 
-                    // Проверяем доступность оборудования без сброса выбора
                     if (App.state.selectedStartDate && App.state.selectedEndDate) {
                         App.orders.recheckEquipmentAvailability();
                     }
@@ -3540,49 +3660,66 @@
             recheckEquipmentAvailability() {
                 if (!App.state.selectedStartDate || !App.state.selectedEndDate) return;
 
-                const clientSections = document.querySelectorAll('.client-section');
                 let hasConflicts = false;
 
-                clientSections.forEach(section => {
-                    const clientInput = section.querySelector('.client-search');
-                    if (!clientInput || !clientInput.dataset.clientId) return;
+                document.querySelectorAll('.client-section').forEach(section => {
+                    section.querySelectorAll('select[data-category]:not([data-category="main-type"])').forEach(select => {
+                        const currentValue = select.value;
+                        const category = select.dataset.category;
+                        const fieldId = select.dataset.fieldId;
 
-                    const selects = section.querySelectorAll('select[data-category]');
-                    selects.forEach(select => {
-                        if (select.value) {
-                            const equipmentId = parseInt(select.value);
-                            const isAvailable = App.equipment.checkAvailability(
-                                equipmentId,
-                                App.state.selectedStartDate,
-                                App.state.selectedEndDate,
-                                App.state.currentEditingOrder
-                            );
+                        // Удаляем старые предупреждения
+                        const existingWarning = select.parentElement.querySelector('.availability-warning');
+                        if (existingWarning) existingWarning.remove();
 
-                            // Удаляем старое предупреждение если есть
-                            const existingWarning = select.parentElement.querySelector('.availability-warning');
-                            if (existingWarning) {
-                                existingWarning.remove();
-                            }
+                        // Обновляем список доступного оборудования
+                        const availableEquipment = App.orders.getAvailableForCategory(category, section, fieldId);
+                        const clientId = parseInt(section.querySelector('.client-search').dataset.clientId);
+                        const client = App.db.clients.find(c => c.id === clientId);
 
-                            if (!isAvailable) {
-                                const equipmentItem = App.db.equipment.find(e => e.id === equipmentId);
-                                hasConflicts = true;
+                        const recommended = availableEquipment.filter(e =>
+                            App.equipment.getRecommended(client, category).some(r => r.id === e.id)
+                        );
+                        const other = availableEquipment.filter(e => !recommended.some(r => r.id === e.id));
 
-                                // Добавляем предупреждение о недоступности
-                                const warning = document.createElement('div');
-                                warning.className = 'availability-warning';
-                                warning.style.cssText = 'color: #dc2626; font-size: 11px; margin-top: 4px; font-weight: 500;';
-                                warning.textContent = '⚠️ Недоступно на выбранные даты';
-                                select.parentElement.appendChild(warning);
+                        // Перестраиваем options
+                        select.innerHTML = '<option value="">Выберите...</option>';
 
-                                // Подсвечиваем select красной рамкой
-                                select.style.borderColor = '#dc2626';
-                                select.style.boxShadow = '0 0 0 2px rgba(220, 38, 38, 0.1)';
-                            } else {
-                                // Убираем красную рамку если оборудование доступно
-                                select.style.borderColor = '';
-                                select.style.boxShadow = '';
-                            }
+                        if (recommended.length > 0) {
+                            const optgroup = document.createElement('optgroup');
+                            optgroup.label = '➤ Рекомендовано';
+                            recommended.forEach(eq => {
+                                const option = document.createElement('option');
+                                option.value = eq.id;
+                                option.textContent = `✓ ${eq.name} - ${App.orders.getPrice(eq)}₽/день`;
+                                optgroup.appendChild(option);
+                            });
+                            select.appendChild(optgroup);
+                        }
+
+                        if (other.length > 0) {
+                            const optgroup = document.createElement('optgroup');
+                            optgroup.label = 'Все доступные';
+                            other.forEach(eq => {
+                                const option = document.createElement('option');
+                                option.value = eq.id;
+                                option.textContent = `${eq.name} - ${App.orders.getPrice(eq)}₽/день`;
+                                optgroup.appendChild(option);
+                            });
+                            select.appendChild(optgroup);
+                        }
+
+                        // Восстанавливаем значение если оно доступно
+                        if (currentValue && availableEquipment.some(e => e.id == currentValue)) {
+                            select.value = currentValue;
+                        } else if (currentValue) {
+                            hasConflicts = true;
+                            const warning = document.createElement('div');
+                            warning.className = 'availability-warning';
+                            warning.style.cssText = 'color: #dc2626; font-size: 11px; margin-top: 4px;';
+                            warning.textContent = '⚠️ Недоступно на выбранные даты';
+                            select.parentElement.appendChild(warning);
+                            select.style.borderColor = '#dc2626';
                         }
                     });
                 });
@@ -3625,36 +3762,38 @@
                     section.querySelectorAll('select[data-category]').forEach(select => {
                         const equipmentId = parseInt(select.value);
                         const category = select.dataset.category;
-                        if (equipmentId) {
+                        if (equipmentId && category !== 'main-type') {
                             const eq = App.db.equipment.find(e => e.id === equipmentId);
                             if (eq) {
-                                selectedEquipment[category] = eq;
+                                if (!selectedEquipment[category]) {
+                                    selectedEquipment[category] = [];
+                                }
+                                selectedEquipment[category].push(eq);
                             }
                         }
                     });
 
-                    if (selectedEquipment['snowboards']) {
-                        const snowboard = selectedEquipment['snowboards'];
-                        const hasBoots = !!selectedEquipment['snowboard-boots'];
-                        const hasBindings = !!selectedEquipment['bindings'];
+                    if (selectedEquipment['snowboards'] && selectedEquipment['snowboards'].length > 0) {
+                        selectedEquipment['snowboards'].forEach(snowboard => {
+                            clientTotal += App.orders.calculateEquipmentPrice(snowboard, isSameDay, daysDiff);
+                        });
 
-                        clientTotal += App.orders.calculateEquipmentPrice(snowboard, isSameDay, daysDiff);
-
-                        if (!hasBoots) {
+                        const hasBoots = selectedEquipment['snowboard-boots'] && selectedEquipment['snowboard-boots'].length > 0;
+                        if (!hasBoots && selectedEquipment['snowboards'].length === 1) {
                             clientTotal -= (100 * (isSameDay ? 1 : daysDiff));
                         }
-                    } else if (selectedEquipment['skis']) {
-                        const skis = selectedEquipment['skis'];
-                        const hasBoots = !!selectedEquipment['ski-boots'];
-                        const hasPoles = !!selectedEquipment['poles'];
+                    } else if (selectedEquipment['skis'] && selectedEquipment['skis'].length > 0) {
+                        selectedEquipment['skis'].forEach(skis => {
+                            clientTotal += App.orders.calculateEquipmentPrice(skis, isSameDay, daysDiff);
+                        });
 
-                        clientTotal += App.orders.calculateEquipmentPrice(skis, isSameDay, daysDiff);
+                        const hasBoots = selectedEquipment['ski-boots'] && selectedEquipment['ski-boots'].length > 0;
 
-                        if (!hasBoots) {
+                        if (!hasBoots && selectedEquipment['skis'].length === 1) {
                             clientTotal -= (100 * (isSameDay ? 1 : daysDiff));
                         }
 
-                        if (hasPoles) {
+                        if (hasPoles && selectedEquipment['skis'].length === 1) {
                             clientTotal += (100 * (isSameDay ? 1 : daysDiff));
                         }
                     } else {
@@ -3737,20 +3876,19 @@
 
             validateForm() {
                 const hasDateRange = App.state.selectedStartDate && App.state.selectedEndDate;
-                const clientSections = document.querySelectorAll('.client-section');
                 let hasValidClients = false;
                 let hasEquipment = false;
                 let hasAvailableEquipment = true;
 
+                const clientSections = document.querySelectorAll('.client-section');
                 clientSections.forEach(section => {
                     const clientInput = section.querySelector('.client-search');
                     if (clientInput && clientInput.dataset.clientId) {
                         hasValidClients = true;
-                        const selects = section.querySelectorAll('select[data-category]');
+                        const selects = section.querySelectorAll('select[data-category]:not([data-category="main-type"])');
                         selects.forEach(select => {
                             if (select.value) {
                                 hasEquipment = true;
-                                // Проверяем наличие предупреждения о недоступности
                                 const warning = select.parentElement.querySelector('.availability-warning');
                                 if (warning) {
                                     hasAvailableEquipment = false;
@@ -3789,10 +3927,11 @@
 
                     if (clientId) {
                         const equipmentList = [];
-                        section.querySelectorAll('select[data-category]').forEach(select => {
+                        // Собираем только оборудование, не main-type
+                        section.querySelectorAll('select[data-category]:not([data-category="main-type"])').forEach(select => {
                             const equipmentId = parseInt(select.value);
                             const categoryId = select.dataset.category;
-                            if (equipmentId) {
+                            if (equipmentId && categoryId) {
                                 equipmentList.push({
                                     equipmentId: equipmentId,
                                     category: categoryId
@@ -3800,10 +3939,12 @@
                             }
                         });
 
-                        clientsList.push({
-                            clientId: clientId,
-                            equipment: equipmentList
-                        });
+                        if (equipmentList.length > 0 || clientsList.length === 0) {
+                            clientsList.push({
+                                clientId: clientId,
+                                equipment: equipmentList
+                            });
+                        }
                     }
                 });
 
@@ -3830,15 +3971,18 @@
                 let conflictEquipmentNames = [];
 
                 clientSections.forEach(section => {
-                    const selects = section.querySelectorAll('select[data-category]');
+                    const selects = section.querySelectorAll('select[data-category]:not([data-category="main-type"])');
                     selects.forEach(select => {
                         if (select.value) {
                             const equipmentId = parseInt(select.value);
+                            const fieldId = select.dataset.fieldId || null;
+
                             const isAvailable = App.equipment.checkAvailability(
                                 equipmentId,
                                 App.state.selectedStartDate,
                                 App.state.selectedEndDate,
-                                App.state.currentEditingOrder
+                                App.state.currentEditingOrder,
+                                fieldId
                             );
 
                             if (!isAvailable) {
@@ -3848,7 +3992,6 @@
                                     conflictEquipmentNames.push(equipmentItem.name);
                                 }
 
-                                // Добавляем визуальную индикацию если её нет
                                 const existingWarning = select.parentElement.querySelector('.availability-warning');
                                 if (!existingWarning) {
                                     const warning = document.createElement('div');
@@ -4226,6 +4369,21 @@
                 document.getElementById('client-modal').classList.add('show');
             },
 
+            findFreeClientNumber() {
+                let number = 1;
+                const clientNumbers = App.db.clients
+                    .filter(c => c.name && c.name.match(/^Клиент \d+$/))
+                    .map(c => parseInt(c.name.replace('Клиент ', '')))
+                    .sort((a, b) => a - b);
+
+                for (let i = 0; i < clientNumbers.length; i++) {
+                    if (clientNumbers[i] !== i + 1) {
+                        return i + 1;
+                    }
+                }
+                return clientNumbers.length + 1;
+            },
+
             save() {
                 const name = document.getElementById('client-name').value.trim();
                 const phone = document.getElementById('client-phone').value.trim();
@@ -4234,8 +4392,8 @@
                 const shoeSize = parseFloat(document.getElementById('client-shoe-size').value) || null;
                 const notes = document.getElementById('client-notes').value.trim();
 
-                if (!name || !phone || phone === '+7') {
-                    alert('Заполните обязательные поля: ФИО и телефон');
+                if (!name) {
+                    alert('Заполните обязательные поля: ФИО');
                     return;
                 }
 
@@ -4271,21 +4429,32 @@
                     App.db.clients.push(newClient);
 
                     if (App.state.currentClientSection) {
+                        if (App.state.preservedStartDate) {
+                            App.state.selectedStartDate = App.state.preservedStartDate;
+                            App.state.selectedEndDate = App.state.preservedEndDate;
+                        }
+
                         const clientInput = App.state.currentClientSection.querySelector('.client-search');
                         clientInput.value = newClient.name;
                         clientInput.dataset.clientId = newClient.id;
 
                         const dropdown = App.state.currentClientSection.querySelector('.client-dropdown');
                         dropdown.innerHTML = App.db.clients.sort((a, b) => a.name.localeCompare(b.name)).map(client => `
-                            <div class="client-option" onclick="App.orders.selectClient(this, ${client.id})">
-                                ${client.name} - ${client.phone}
-                            </div>
-                        `).join('');
+        <div class="client-option" onclick="App.orders.selectClient(this, ${client.id})">
+            ${client.name} - ${client.phone}
+        </div>
+    `).join('');
 
                         App.orders.updateEquipmentCategories(App.state.currentClientSection);
-                        App.orders.validateForm();
+
+                        setTimeout(() => {
+                            App.orders.calculateTotal();
+                            App.orders.validateForm();
+                        }, 50);
 
                         App.state.currentClientSection = null;
+                        App.state.preservedStartDate = null;
+                        App.state.preservedEndDate = null;
                     }
 
                     App.utils.showNotification('Клиент добавлен');
@@ -4323,7 +4492,42 @@
 
                 const container = document.getElementById('equipment-list');
 
+                const existingFilters = document.getElementById('equipment-status-filters');
+                if (existingFilters) {
+                    existingFilters.remove();
+                }
+
+                const filterButtons = document.createElement('div');
+                filterButtons.id = 'equipment-status-filters';
+                filterButtons.style.cssText = 'display: flex; gap: 8px; margin-bottom: 16px;';
+                filterButtons.innerHTML = `
+    <button onclick="App.state.equipmentStatusFilter = null; App.equipment.render()"
+        style="padding: 6px 14px; border: 1px solid #dee2e6; border-radius: 20px;
+        background: ${!App.state.equipmentStatusFilter ? '#5e72e4' : 'white'};
+        color: ${!App.state.equipmentStatusFilter ? 'white' : '#495057'}; font-size: 13px; cursor: pointer;">
+        Все
+    </button>
+    <button onclick="App.state.equipmentStatusFilter = 'for_sale'; App.equipment.render()"
+        style="padding: 6px 14px; border: 1px solid #dee2e6; border-radius: 20px;
+        background: ${App.state.equipmentStatusFilter === 'for_sale' ? '#f5365c' : 'white'};
+        color: ${App.state.equipmentStatusFilter === 'for_sale' ? 'white' : '#495057'}; font-size: 13px; cursor: pointer;">
+        На продажу
+    </button>
+    <button onclick="App.state.equipmentStatusFilter = 'sold'; App.equipment.render()"
+        style="padding: 6px 14px; border: 1px solid #dee2e6; border-radius: 20px;
+        background: ${App.state.equipmentStatusFilter === 'sold' ? '#6c757d' : 'white'};
+        color: ${App.state.equipmentStatusFilter === 'sold' ? 'white' : '#495057'}; font-size: 13px; cursor: pointer;">
+        Продано
+    </button>
+`;
+
+                container.parentNode.insertBefore(filterButtons, container);
+
                 let filteredEquipment = App.db.equipment.filter(e => e.category === activeCategory);
+
+                if (App.state.equipmentStatusFilter) {
+                    filteredEquipment = filteredEquipment.filter(e => e.status === App.state.equipmentStatusFilter);
+                }
 
                 if (searchQuery) {
                     filteredEquipment = filteredEquipment.filter(item =>
@@ -4346,34 +4550,52 @@
                     return;
                 }
 
-                container.innerHTML = filteredEquipment.map(item => {
-                    let actualStatus = item.status;
-                    const isUsedInActiveOrders = App.db.orders.some(order =>
-                        order.status !== 'cancelled' && order.status !== 'completed' &&
-                        order.clients.some(client =>
-                            client.equipment.some(eq => eq.equipmentId === item.id)
-                        )
-                    );
-
-                    if (isUsedInActiveOrders) {
-                        actualStatus = 'rented';
+                container.innerHTML = filteredEquipment.map((item, index) => {
+                    let categoryColor = '';
+                    if (item.priceCategoryId) {
+                        const priceCategory = App.db.priceCategories.find(pc => pc.id === item.priceCategoryId);
+                        if (priceCategory && priceCategory.color) {
+                            const hex = priceCategory.color.replace('#', '');
+                            const r = parseInt(hex.substr(0, 2), 16);
+                            const g = parseInt(hex.substr(2, 2), 16);
+                            const b = parseInt(hex.substr(4, 2), 16);
+                            categoryColor = `background: rgba(${r}, ${g}, ${b}, 0.15);`;
+                        }
                     }
 
+                    const statusDisplay = item.displayStatus || item.status || 'available';
+                    const statusClass = statusDisplay === 'available' ? 'status-available' :
+                        statusDisplay === 'rented' ? 'status-rented' :
+                            statusDisplay === 'sold' ? 'status-sold' :
+                                statusDisplay === 'for_sale' ? 'status-available' :
+                                    'status-damaged';
+
+                    const statusText = statusDisplay === 'available' ? 'Доступно' :
+                        statusDisplay === 'rented' ? 'В прокате' :
+                            statusDisplay === 'sold' ? 'Продано' :
+                                statusDisplay === 'for_sale' ? 'На продажу' :
+                                    'Повреждено';
+
                     return `
-                        <div class="equipment-card" onclick="App.equipment.showDetails(${item.id})">
-                            <div class="equipment-header">
-                                <div class="equipment-name">${item.name}</div>
-                                <div class="equipment-status status-${actualStatus}">${App.utils.getEquipmentStatusName(actualStatus)}</div>
-                            </div>
-                            <div class="equipment-specs">
-                                ${item.length ? `<span><strong>Длина:</strong> ${item.length}см</span>` : ''}
-                                ${item.size ? `<span><strong>Размер:</strong> ${item.size}</span>` : ''}
-                                ${item.bindingSize ? `<span><strong>Размер:</strong> ${item.bindingSize}</span>` : ''}
-                                ${item.stiffness ? `<span><strong>Жёсткость:</strong> ${item.stiffness}/10</span>` : ''}
-                                ${App.equipment.getPriceDisplay(item)}
-                            </div>
-                        </div>
-                    `;
+        <div class="list-item equipment-item" onclick="App.equipment.showDetails(${item.id})" 
+         style="${categoryColor}; position: relative;">
+        <div style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); 
+                    color: #6c757d; font-weight: 500; font-size: 14px;">${index + 1}</div>
+        <div class="equipment-main" style="margin-left: 45px;">
+                <div class="equipment-name">${item.name}</div>
+                <div class="equipment-info">
+                    ${item.length ? `<span><strong>Длина:</strong> ${item.length}см</span>` : ''}
+                    ${item.size ? `<span><strong>Размер:</strong> ${item.size}</span>` : ''}
+                    ${item.bindingSize ? `<span><strong>Размер:</strong> ${item.bindingSize}</span>` : ''}
+                    ${item.stiffness ? `<span><strong>Жёсткость:</strong> ${item.stiffness}/10</span>` : ''}
+                    ${App.equipment.getPriceDisplay(item)}
+                </div>
+            </div>
+            <div class="equipment-status ${statusClass}">
+                ${statusText}
+            </div>
+        </div>
+    `;
                 }).join('');
             },
 
@@ -4446,7 +4668,8 @@
                                     <select id="detail-status"
                                             style="width: 100%; padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 6px;">
                                         <option value="available" ${equipmentItem.status === 'available' ? 'selected' : ''}>Доступно</option>
-                                        <option value="maintenance" ${equipmentItem.status === 'maintenance' ? 'selected' : ''}>На обслуживании</option>
+                                        <option value="for_sale" ${equipmentItem.status === 'for_sale' ? 'selected' : ''}>На продажу</option>
+                                        <option value="sold" ${equipmentItem.status === 'sold' ? 'selected' : ''}>Продано</option>
                                         <option value="damaged" ${equipmentItem.status === 'damaged' ? 'selected' : ''}>Повреждено</option>
                                     </select>
                                 </div>
@@ -4678,13 +4901,21 @@
                 return dayDiv;
             },
 
-            checkAvailability(equipmentId, startDate, endDate, excludeOrderId = null) {
-                if (!startDate || !endDate) return true;
-
+            checkAvailability(equipmentId, startDate, endDate, excludeOrderId = null, excludeFieldId = null) {
                 const equipmentItem = App.db.equipment.find(e => e.id === equipmentId);
-                if (equipmentItem && (equipmentItem.status === 'maintenance' || equipmentItem.status === 'damaged')) {
+                if (equipmentItem && (equipmentItem.status === 'sold' || equipmentItem.status === 'damaged')) {
                     return false;
                 }
+
+                const currentOrderSelects = document.querySelectorAll('.client-section select[data-category]');
+                let usedInCurrentOrder = false;
+                currentOrderSelects.forEach(select => {
+                    if (select.dataset.fieldId === excludeFieldId) return;
+                    if (parseInt(select.value) === equipmentId) {
+                        usedInCurrentOrder = true;
+                    }
+                });
+                if (usedInCurrentOrder) return false;
 
                 const pickupTime = document.getElementById('pickup-time')?.value || '10:00';
                 const returnTime = document.getElementById('return-time')?.value || '18:00';
@@ -5057,6 +5288,7 @@
                         document.getElementById('price-category-daily').value = category.dailyPrice;
                         document.getElementById('price-category-next').value = category.nextDaysPrice;
                         document.getElementById('delete-price-category-btn').style.display = 'block';
+                        document.getElementById('price-category-color').value = category.color || '#5e72e4';
                     }
                 } else {
                     document.getElementById('price-category-modal-title').textContent = 'Добавить ценовую категорию';
@@ -5075,6 +5307,7 @@
                 const hourlyPrice = parseFloat(document.getElementById('price-category-hourly').value) || 0;
                 const dailyPrice = parseFloat(document.getElementById('price-category-daily').value) || 0;
                 const nextDaysPrice = parseFloat(document.getElementById('price-category-next').value) || 0;
+                const color = document.getElementById('price-category-color').value || '#5e72e4';
 
                 if (!name) {
                     alert('Введите название категории');
@@ -5089,7 +5322,8 @@
                             name: name,
                             hourlyPrice: hourlyPrice,
                             dailyPrice: dailyPrice,
-                            nextDaysPrice: nextDaysPrice
+                            nextDaysPrice: nextDaysPrice,
+                            color: color
                         };
                         App.utils.showNotification('Ценовая категория обновлена');
                         if (App.firebase.currentUser && App.firebase.syncEnabled) {
@@ -5102,7 +5336,8 @@
                         name: name,
                         hourlyPrice: hourlyPrice,
                         dailyPrice: dailyPrice,
-                        nextDaysPrice: nextDaysPrice
+                        nextDaysPrice: nextDaysPrice,
+                        color: color
                     };
                     App.db.priceCategories.push(newCategory);
                     App.utils.showNotification('Ценовая категория добавлена');
@@ -6341,6 +6576,19 @@
                         e.target.value = '+' + value;
                     } else if (value.startsWith('7')) {
                         e.target.value = '+' + value;
+                    }
+
+                    const hint = document.getElementById('phone-hint');
+                    if (value.length > 1 && value.length !== 11) {
+                        hint.textContent = `Введено цифр: ${value.length} из 11`;
+                        hint.style.display = 'block';
+                        hint.style.color = value.length < 11 ? '#f5365c' : '#ffc107';
+                    } else if (value.length === 11) {
+                        hint.textContent = '✓ Номер корректный';
+                        hint.style.display = 'block';
+                        hint.style.color = '#2dce89';
+                    } else {
+                        hint.style.display = 'none';
                     }
                 });
 
