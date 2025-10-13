@@ -6433,7 +6433,7 @@
                 try {
                     // Инициализируем Firebase с конфигурацией
                     firebase.initializeApp(firebaseConfig);
-                    App.firebase.db = firebase.firestore();
+                    App.firebase.db = firebase.database();
                     App.firebase.auth = firebase.auth();
 
                     // Проверяем авторизацию
