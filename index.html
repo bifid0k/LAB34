@@ -6424,6 +6424,7 @@
                 const firebaseConfig = {
                     apiKey: "AIzaSyBeVWYjvGiFvbs3ovqLYHZAyQqz8ArFj5E",
                     authDomain: "active-and-positive.firebaseapp.com",
+                    databaseURL: "https://active-and-positive-default-rtdb.firebaseio.com",
                     projectId: "active-and-positive",
                     storageBucket: "active-and-positive.firebasestorage.app",
                     messagingSenderId: "418586546672",
@@ -6433,7 +6434,7 @@
                 try {
                     // Инициализируем Firebase с конфигурацией
                     firebase.initializeApp(firebaseConfig);
-                    App.firebase.db = firebase.database();
+                    App.firebase.db = firebase.database(); // database
                     App.firebase.auth = firebase.auth();
 
                     // Проверяем авторизацию
@@ -7144,3 +7145,4 @@
 </body>
 
 </html>
+
