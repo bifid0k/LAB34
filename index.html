@@ -1115,6 +1115,30 @@
             opacity: 0.6;
         }
 
+        .edit-category-btn {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .edit-category-btn:hover {
+            background: #5a6268;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(108, 117, 125, 0.3);
+        }
+
+        .edit-category-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
         .equipment-list {
             display: grid;
         }
@@ -1391,6 +1415,9 @@
     <!-- Firebase Realtime Database -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
 
 </head>
 
@@ -1440,6 +1467,11 @@
                     <button class="btn btn-success" id="new-order-btn">
                         <span class="material-icons">add</span>
                         Новый заказ
+                    </button>
+                    <button class="btn" id="new-client-header-btn"
+                        style="background: #4dabf7; color: white; margin-left: 12px;">
+                        <span class="material-icons">person_add</span>
+                        Новый клиент
                     </button>
                 </div>
             </div>
@@ -1528,8 +1560,8 @@
                             <button class="equipment-tab" data-category="helmets">Шлемы</button>
                             <button class="equipment-tab" data-category="goggles">Маски</button>
                             <button class="add-category-btn" id="add-category-btn">+ Категория</button>
-                            <button class="delete-category-btn" id="delete-category-btn"
-                                style="margin-left: 16px;">Удалить</button>
+                            <button class="edit-category-btn" id="edit-category-btn"
+                                style="margin-left: 16px; background: #6c757d;">⚙️ Редактировать</button>
                         </div>
                         <input type="text" class="search-box" id="equipment-search" placeholder="Поиск оборудования...">
                         <button class="btn btn-success" id="add-equipment-btn" style="margin-bottom: 16px;">
@@ -1810,6 +1842,18 @@
                                     доступны при следующем запуске
                                 </p>
                             </div>
+                            <div class="settings-section">
+                                <h3 style="margin-bottom: 16px;">Очистка данных</h3>
+                                <button onclick="App.pwa.clearCache()" class="btn"
+                                    style="background: #dc3545; color: white; width: 100%;">
+                                    <span class="material-icons"
+                                        style="vertical-align: middle; margin-right: 8px;">delete_sweep</span>
+                                    Очистить кэш
+                                </button>
+                                <p style="margin-top: 8px; font-size: 13px; color: #6c757d;">
+                                    Удалит кэш Service Worker и все сохранённые данные
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1931,7 +1975,11 @@
                             </div>
                         </div>
                     </div>
-
+                    <div class="form-group">
+                        <label>Примечание по оплате</label>
+                        <textarea id="payment-notes" rows="2"
+                            placeholder="Способ оплаты, детали транзакции..."></textarea>
+                    </div>
                     <div class="form-group">
                         <label>Примечание</label>
                         <textarea id="order-notes" rows="3" placeholder="Дополнительная информация..."></textarea>
@@ -1942,11 +1990,14 @@
                 <button type="button" class="btn btn-danger" id="cancel-order-btn" style="display: none;">
                     Отменить заказ
                 </button>
-                <div style="margin-left: auto;">
-                    <button type="button" class="btn btn-success" id="create-order-btn" disabled>
-                        Создать заказ
-                    </button>
-                </div>
+                <button type="button" class="btn" id="print-contract-btn"
+                    style="background: #6c757d; color: white; width: 100%; max-width: 300px; display: block; margin-left: auto; margin-right: auto;">
+                    <span class="material-icons" style="vertical-align: middle; margin-right: 8px;">print</span>
+                    Распечатать договор
+                </button>
+                <button type="button" class="btn btn-success" id="create-order-btn" disabled>
+                    Создать заказ
+                </button>
             </div>
         </div>
     </div>
@@ -2050,9 +2101,17 @@
                         <option value="">Выберите родительскую категорию...</option>
                     </select>
                 </div>
+                <div class="form-group">
+                    <label>Дополнительная цена в комплекте (₽)</label>
+                    <input type="number" id="category-additional-price" step="10" min="0" placeholder="0">
+                    <small style="color: #6c757d; font-size: 12px;">
+                        Цена добавления этого оборудования в комплект (для вспомогательного)
+                    </small>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-success" id="save-category-btn">Сохранить</button>
+                <button type="button" class="btn" id="delete-category-btn">Удалить категорию</button>
             </div>
         </div>
     </div>
@@ -2261,6 +2320,28 @@
             needsSync: false,
 
             init() {
+                const isDevelopment = window.location.hostname === 'localhost' ||
+                    window.location.hostname === '127.0.0.1' ||
+                    window.location.port === '5500';  // Live Server порт
+
+                if (isDevelopment) {
+                    console.log('🔧 Режим разработки - Service Worker отключен');
+
+                    // Удаляем существующий SW если есть
+                    if ('serviceWorker' in navigator) {
+                        navigator.serviceWorker.getRegistrations().then(registrations => {
+                            registrations.forEach(registration => {
+                                registration.unregister();
+                                console.log('Service Worker удалён');
+                            });
+                        });
+                    }
+
+                    // Остальной код PWA инициализации продолжается
+                    App.pwa.setupOnlineOfflineHandlers();
+                    App.pwa.updateOnlineStatus();
+                    return;  // НЕ регистрируем SW
+                }
                 // Регистрируем Service Worker
                 if ('serviceWorker' in navigator) {
                     navigator.serviceWorker.register('service-worker.js')
@@ -2405,6 +2486,30 @@
                         App.pwa.installApp();
                     });
                 }
+            },
+
+            clearCache() {
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.getRegistrations().then(registrations => {
+                        registrations.forEach(registration => {
+                            registration.unregister();
+                        });
+                    });
+                }
+
+                if ('caches' in window) {
+                    caches.keys().then(names => {
+                        names.forEach(name => {
+                            caches.delete(name);
+                        });
+                    });
+                }
+
+                App.utils.showNotification('✅ Кэш очищен. Перезагрузите страницу.');
+
+                setTimeout(() => {
+                    window.location.reload(true);
+                }, 1500);
             },
 
             async installApp() {
@@ -2591,6 +2696,7 @@
                 if (modalId === 'order-modal') {
                     App.state.selectedStartDate = null;
                     App.state.selectedEndDate = null;
+                    App.orders.render();
                 }
             }
         };
@@ -3128,7 +3234,7 @@
                                         `).join('') : '<div style="color: #6c757d;">Нет клиентов в заказе</div>'}
                                         <div style="margin-top: 8px;">
                                             <strong>Сумма:</strong> ${finalAmount.toFixed(2)}₽ | 
-                                            <strong>К доплате:</strong> ${Math.max(0, remainingAmount).toFixed(2)}₽
+                                            <strong>К доплате:</strong> ${Math.max(0, remainingAmount).toFixed(2)}₽${order.paymentNotes ? ` | <span style="color: #495057;">💳 ${order.paymentNotes}</span>` : ''}
                                         </div>
                                     </div>
                                 </div>
@@ -3278,10 +3384,10 @@
                 document.getElementById('discount').value = order.discount;
                 document.getElementById('paid-amount').value = order.paidAmount;
                 document.getElementById('order-notes').value = order.notes;
+                document.getElementById('payment-notes').value = order.paymentNotes;
 
                 App.orders.clearClients();
                 if (order.clients && order.clients.length > 0) {
-                    // Сначала создаем всех клиентов
                     order.clients.forEach((clientOrder, index) => {
                         if (index === 0) {
                             App.orders.addClientToOrder();
@@ -3290,7 +3396,6 @@
                         }
                     });
 
-                    // Заполняем данные с правильной последовательностью
                     setTimeout(() => {
                         const clientSections = document.querySelectorAll('.client-section');
 
@@ -3301,12 +3406,10 @@
                             const client = App.db.clients.find(c => c.id === clientOrder.clientId);
                             if (!client) return;
 
-                            // Устанавливаем клиента
                             const input = clientSection.querySelector('.client-search');
                             input.value = client.name;
                             input.dataset.clientId = client.id;
 
-                            // Обновляем категории оборудования
                             App.orders.updateEquipmentCategories(clientSection);
 
                             // Определяем основной тип из оборудования
@@ -3352,7 +3455,6 @@
 
                                     // Создаем дополнительные поля если нужно
                                     for (let i = 0; i < equipmentIds.length; i++) {
-                                        console.log(`Ищем кнопку для категории: ${category}`);
 
                                         // Ищем кнопку в разных возможных контейнерах
                                         let addBtn = null;
@@ -3360,13 +3462,11 @@
                                         // Для основного оборудования
                                         if (category === mainType) {
                                             addBtn = clientSection.querySelector('.main-equipment-container button[onclick*="addEquipmentField"]');
-                                            console.log('Поиск в main-equipment-container:', addBtn);
                                         }
 
                                         // Для вспомогательных категорий
                                         if (!addBtn) {
                                             addBtn = clientSection.querySelector(`.category-section[data-category="${category}"] button[onclick*="addEquipmentField"]`);
-                                            console.log(`Поиск в category-section[data-category="${category}"]:`, addBtn);
                                         }
 
                                         // Для вторичных категорий
@@ -3374,14 +3474,10 @@
                                             const categoryHeader = clientSection.querySelector(`.equipment-fields[data-category="${category}"]`);
                                             if (categoryHeader) {
                                                 addBtn = categoryHeader.parentElement.querySelector('button[onclick*="addEquipmentField"]');
-                                                console.log(`Поиск через equipment-fields parent:`, addBtn);
                                             }
                                         }
 
-                                        console.log(`Кнопка найдена: ${addBtn ? 'Да' : 'Нет'}`);
-
                                         if (addBtn) {
-                                            console.log(`Добавляем поле для категории ${category} через кнопку:`, addBtn);
                                             App.orders.addEquipmentField(addBtn, category);
                                         } else {
                                             console.log(`ОШИБКА: Кнопка не найдена для категории ${category}`);
@@ -3392,17 +3488,10 @@
                                     setTimeout(() => {
                                         const selects = clientSection.querySelectorAll(`select[data-category="${category}"]:not([data-category="main-type"])`);
 
-                                        console.log(`Категория: ${category}`);
-                                        console.log(`Найдено селектов: ${selects.length}`);
-                                        console.log(`Нужно заполнить ID: ${equipmentIds.length}`, equipmentIds);
-
                                         equipmentIds.forEach((eqId, idx) => {
                                             if (selects[idx]) {
-                                                console.log(`Заполняем селект ${idx} значением ${eqId}`);
                                                 selects[idx].value = eqId;
                                                 App.orders.selectEquipmentItem(selects[idx]);
-                                            } else {
-                                                console.log(`Селект ${idx} не найден для значения ${eqId}`);
                                             }
                                         });
                                     }, 200);
@@ -3427,6 +3516,7 @@
                 document.getElementById('paid-amount').value = '0';
                 document.getElementById('remaining-amount').value = '';
                 document.getElementById('order-notes').value = '';
+                document.getElementById('payment-notes').value = '';
                 App.orders.clearClients();
             },
 
@@ -4027,10 +4117,12 @@
 
                 let totalAmount = 0;
 
+                // Обрабатываем каждую секцию клиента
                 document.querySelectorAll('.client-section').forEach(section => {
                     let clientTotal = 0;
                     const selectedEquipment = {};
 
+                    // Собираем всё выбранное оборудование
                     section.querySelectorAll('select[data-category]').forEach(select => {
                         const equipmentId = parseInt(select.value);
                         const category = select.dataset.category;
@@ -4045,44 +4137,48 @@
                         }
                     });
 
+                    // Получаем категории
                     const mainCategories = App.db.categories.filter(c => c.type === 'main');
                     const auxiliaryCategories = App.db.categories.filter(c => c.type === 'auxiliary');
                     const secondaryCategories = App.db.categories.filter(c => c.type === 'secondary');
 
+                    // 1. СЧИТАЕМ ОСНОВНОЕ ОБОРУДОВАНИЕ и количество комплектов для каждого типа
+                    const kitsCount = {}; // { 'snowboards': 2, 'skis': 1 }
+
                     mainCategories.forEach(mainCat => {
                         const mainEquipment = selectedEquipment[mainCat.id] || [];
+                        kitsCount[mainCat.id] = mainEquipment.length;
 
-                        if (mainEquipment.length > 0) {
-                            mainEquipment.forEach(mainEq => {
-                                clientTotal += App.orders.calculateEquipmentPrice(mainEq, isSameDay, daysDiff);
-
-                                const relatedAuxiliary = auxiliaryCategories.filter(aux => aux.parent === mainCat.id);
-
-                                relatedAuxiliary.forEach(auxCat => {
-                                    const hasAuxiliary = selectedEquipment[auxCat.id] && selectedEquipment[auxCat.id].length > 0;
-
-                                    if (!hasAuxiliary && mainEquipment.length === 1) {
-                                        clientTotal -= (100 * (isSameDay ? 1 : daysDiff));
-                                    }
-                                });
-                            });
-                        }
+                        // Добавляем цену каждого основного оборудования
+                        mainEquipment.forEach(mainEq => {
+                            clientTotal += App.orders.calculateEquipmentPrice(mainEq, isSameDay, daysDiff);
+                        });
                     });
 
+                    // 2. ОБРАБАТЫВАЕМ ВСПОМОГАТЕЛЬНОЕ ОБОРУДОВАНИЕ
                     auxiliaryCategories.forEach(auxCat => {
                         const auxEquipment = selectedEquipment[auxCat.id] || [];
 
-                        const hasMainForThisAux = auxCat.parent &&
-                            selectedEquipment[auxCat.parent] &&
-                            selectedEquipment[auxCat.parent].length > 0;
+                        // Определяем сколько комплектов для этой вспомогательной категории
+                        const numKits = auxCat.parent ? (kitsCount[auxCat.parent] || 0) : 0;
 
-                        if (!hasMainForThisAux && auxEquipment.length > 0) {
-                            auxEquipment.forEach(auxEq => {
+                        auxEquipment.forEach((auxEq, index) => {
+                            if (index < numKits) {
+                                // Входит в комплект - используем additionalPrice категории
+                                const categoryAdditionalPrice = auxCat.additionalPrice || 0;
+                                if (isSameDay) {
+                                    clientTotal += categoryAdditionalPrice;
+                                } else {
+                                    clientTotal += categoryAdditionalPrice * daysDiff;
+                                }
+                            } else {
+                                // Не входит в комплект - используем собственную цену
                                 clientTotal += App.orders.calculateEquipmentPrice(auxEq, isSameDay, daysDiff);
-                            });
-                        }
+                            }
+                        });
                     });
 
+                    // 3. ОБРАБАТЫВАЕМ ДОПОЛНИТЕЛЬНОЕ ОБОРУДОВАНИЕ (всегда по собственной цене)
                     secondaryCategories.forEach(secCat => {
                         const secEquipment = selectedEquipment[secCat.id] || [];
 
@@ -4103,24 +4199,32 @@
                 if (equipment.priceCategoryId) {
                     const category = App.db.priceCategories.find(pc => pc.id === equipment.priceCategoryId);
                     prices = category || {
-                        hourlyPrice: 500,
-                        dailyPrice: 700,
-                        nextDaysPrice: 400,
+                        hourlyPrice: 0,
+                        dailyPrice: 0,
+                        nextDaysPrice: 0,
                         oneTimePrice: 0
                     };
                 } else {
                     prices = {
-                        hourlyPrice: equipment.hourlyPrice || 500,
-                        dailyPrice: equipment.dailyPrice || 700,
-                        nextDaysPrice: equipment.nextDaysPrice || 400,
+                        hourlyPrice: equipment.hourlyPrice || 0,
+                        dailyPrice: equipment.dailyPrice || 0,
+                        nextDaysPrice: equipment.nextDaysPrice || 0,
                         oneTimePrice: equipment.oneTimePrice || 0
                     };
                 }
 
-                if (prices.oneTimePrice > 0 && (!prices.dailyPrice || prices.dailyPrice === 0)) {
+                // Проверяем что хоть какая-то цена указана
+                if (prices.oneTimePrice === 0 && prices.dailyPrice === 0 && prices.hourlyPrice === 0) {
+                    console.error('Цена не указана для:', equipment.name);
+                    return 0;
+                }
+
+                // Разовая услуга
+                if (prices.oneTimePrice > 0 && prices.dailyPrice === 0) {
                     return prices.oneTimePrice;
                 }
 
+                // Обычный расчёт по дням
                 if (isSameDay) {
                     return prices.hourlyPrice || prices.dailyPrice * 0.8;
                 } else if (days === 1) {
@@ -4180,11 +4284,25 @@
                 }
             },
 
+            checkPaymentNotes(callback) {
+                const paidAmount = parseFloat(document.getElementById('paid-amount').value) || 0;
+                const paymentNotes = document.getElementById('payment-notes').value.trim();
+
+                if (paidAmount > 0 && !paymentNotes) {
+                    if (confirm('⚠️ Примечание по оплате не заполнено.\nТочно зафиксировать оплату?')) {
+                        callback();
+                    }
+                } else {
+                    callback();
+                }
+            },
+
             collectData() {
                 const totalAmount = parseFloat(document.getElementById('total-amount').value) || 0;
                 const discount = parseFloat(document.getElementById('discount').value) || 0;
                 const paidAmount = parseFloat(document.getElementById('paid-amount').value) || 0;
                 const notes = document.getElementById('order-notes').value;
+                const paymentNotes = document.getElementById('payment-notes').value;
                 const pickupTime = document.getElementById('pickup-time').value;
                 const returnTime = document.getElementById('return-time').value;
 
@@ -4229,103 +4347,119 @@
                     discount: discount,
                     paidAmount: paidAmount,
                     notes: notes,
+                    paymentNotes: paymentNotes,
                     createdAt: new Date()
                 };
             },
 
-            create() {
-                const clientSections = document.querySelectorAll('.client-section');
-                let hasConflicts = false;
-                let conflictEquipmentNames = [];
+            cleanOldDrafts() {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
 
-                clientSections.forEach(section => {
-                    const selects = section.querySelectorAll('select[data-category]:not([data-category="main-type"])');
-                    selects.forEach(select => {
-                        if (select.value) {
-                            const equipmentId = parseInt(select.value);
-                            const fieldId = select.dataset.fieldId || null;
-
-                            const isAvailable = App.equipment.checkAvailability(
-                                equipmentId,
-                                App.state.selectedStartDate,
-                                App.state.selectedEndDate,
-                                App.state.currentEditingOrder,
-                                fieldId
-                            );
-
-                            if (!isAvailable) {
-                                hasConflicts = true;
-                                const equipmentItem = App.db.equipment.find(e => e.id === equipmentId);
-                                if (equipmentItem) {
-                                    conflictEquipmentNames.push(equipmentItem.name);
-                                }
-
-                                const existingWarning = select.parentElement.querySelector('.availability-warning');
-                                if (!existingWarning) {
-                                    const warning = document.createElement('div');
-                                    warning.className = 'availability-warning';
-                                    warning.style.cssText = 'color: #dc2626; font-size: 11px; margin-top: 4px; font-weight: 500;';
-                                    warning.textContent = '⚠️ Недоступно на выбранные даты';
-                                    select.parentElement.appendChild(warning);
-
-                                    select.style.borderColor = '#dc2626';
-                                    select.style.boxShadow = '0 0 0 2px rgba(220, 38, 38, 0.1)';
-                                }
-                            }
-                        }
-                    });
+                App.db.orderDrafts = App.db.orderDrafts.filter(draft => {
+                    const draftDate = new Date(draft.startDate || draft.createdAt);
+                    draftDate.setHours(0, 0, 0, 0);
+                    return draftDate >= today;
                 });
 
-                if (hasConflicts) {
-                    alert(`Следующее оборудование недоступно на выбранные даты:\n${conflictEquipmentNames.join('\n')}\n\nПожалуйста, выберите другое оборудование или измените даты.`);
-                    App.orders.validateForm();
-                    return;
-                }
+                App.storage.save();
+            },
 
-                const isDraft = App.state.currentEditingOrder && App.state.currentEditingOrder.toString().includes('draft');
+            create() {
+                App.orders.checkPaymentNotes(() => {
+                    const clientSections = document.querySelectorAll('.client-section');
+                    let hasConflicts = false;
+                    let conflictEquipmentNames = [];
 
-                if (App.state.currentEditingOrder && !isDraft) {
-                    App.orders.update();
-                } else {
-                    const orderData = App.orders.collectData();
-                    if (orderData) {
-                        orderData.id = Date.now();
-                        orderData.orderNumber = App.utils.getOrderNumber();
+                    clientSections.forEach(section => {
+                        const selects = section.querySelectorAll('select[data-category]:not([data-category="main-type"])');
+                        selects.forEach(select => {
+                            if (select.value) {
+                                const equipmentId = parseInt(select.value);
+                                const fieldId = select.dataset.fieldId || null;
 
-                        if (isDraft) {
-                            const draftIndex = App.db.orderDrafts.findIndex(d =>
-                                d.id === App.state.currentEditingOrder || d.orderNumber === orderData.orderNumber
-                            );
-                            if (draftIndex !== -1) {
-                                App.db.orderDrafts.splice(draftIndex, 1);
+                                const isAvailable = App.equipment.checkAvailability(
+                                    equipmentId,
+                                    App.state.selectedStartDate,
+                                    App.state.selectedEndDate,
+                                    App.state.currentEditingOrder,
+                                    fieldId
+                                );
+
+                                if (!isAvailable) {
+                                    hasConflicts = true;
+                                    const equipmentItem = App.db.equipment.find(e => e.id === equipmentId);
+                                    if (equipmentItem) {
+                                        conflictEquipmentNames.push(equipmentItem.name);
+                                    }
+
+                                    const existingWarning = select.parentElement.querySelector('.availability-warning');
+                                    if (!existingWarning) {
+                                        const warning = document.createElement('div');
+                                        warning.className = 'availability-warning';
+                                        warning.style.cssText = 'color: #dc2626; font-size: 11px; margin-top: 4px; font-weight: 500;';
+                                        warning.textContent = '⚠️ Недоступно на выбранные даты';
+                                        select.parentElement.appendChild(warning);
+
+                                        select.style.borderColor = '#dc2626';
+                                        select.style.boxShadow = '0 0 0 2px rgba(220, 38, 38, 0.1)';
+                                    }
+                                }
+                            }
+                        });
+                    });
+
+                    if (hasConflicts) {
+                        alert(`Следующее оборудование недоступно на выбранные даты:\n${conflictEquipmentNames.join('\n')}\n\nПожалуйста, выберите другое оборудование или измените даты.`);
+                        App.orders.validateForm();
+                        return;
+                    }
+
+                    const isDraft = App.state.currentEditingOrder && App.state.currentEditingOrder.toString().includes('draft');
+
+                    if (App.state.currentEditingOrder && !isDraft) {
+                        App.orders.update();
+                    } else {
+                        const orderData = App.orders.collectData();
+                        if (orderData) {
+                            orderData.id = Date.now();
+                            orderData.orderNumber = App.utils.getOrderNumber();
+
+                            if (isDraft) {
+                                const draftIndex = App.db.orderDrafts.findIndex(d =>
+                                    d.id === App.state.currentEditingOrder || d.orderNumber === orderData.orderNumber
+                                );
+                                if (draftIndex !== -1) {
+                                    App.db.orderDrafts.splice(draftIndex, 1);
+                                }
+                            }
+
+                            App.db.orders.unshift(orderData);
+
+                            orderData.clients.forEach(client => {
+                                client.equipment.forEach(eq => {
+                                    const equipmentItem = App.db.equipment.find(e => e.id === eq.equipmentId);
+                                    if (equipmentItem) {
+                                        equipmentItem.status = 'rented';
+                                    }
+                                });
+                            });
+
+                            App.state.orderCreatedSuccessfully = true;
+                            App.modals.close('order-modal');
+                            App.calendar.render(App.state.currentDate);
+                            App.calendar.updateSelectedDatePanel(App.state.selectedDate);
+                            App.orders.render();
+                            App.equipment.render();
+                            App.clients.render();
+                            App.utils.showNotification('Заказ успешно создан!');
+                            App.storage.save();
+                            if (App.firebase.currentUser && App.firebase.syncEnabled) {
+                                App.firebase.saveToFirebase('orders', orderData);
                             }
                         }
-
-                        App.db.orders.unshift(orderData);
-
-                        orderData.clients.forEach(client => {
-                            client.equipment.forEach(eq => {
-                                const equipmentItem = App.db.equipment.find(e => e.id === eq.equipmentId);
-                                if (equipmentItem) {
-                                    equipmentItem.status = 'rented';
-                                }
-                            });
-                        });
-
-                        App.state.orderCreatedSuccessfully = true;
-                        App.modals.close('order-modal');
-                        App.calendar.render(App.state.currentDate);
-                        App.calendar.updateSelectedDatePanel(App.state.selectedDate);
-                        App.orders.render();
-                        App.equipment.render();
-                        App.clients.render();
-                        App.utils.showNotification('Заказ успешно создан!');
-                        App.storage.save();
-                        if (App.firebase.currentUser && App.firebase.syncEnabled) {
-                            App.firebase.saveToFirebase('orders', orderData);
-                        }
                     }
-                }
+                });
             },
 
             update() {
@@ -4436,50 +4570,64 @@
 
             togglePayment(orderId, shouldBePaid) {
                 const order = App.db.orders.find(o => o.id === orderId);
-                if (order) {
-                    const totalAmount = order.totalAmount || 0;
-                    const discount = order.discount || 0;
-                    const finalAmount = totalAmount - (totalAmount * (discount / 100));
+                if (!order) return;
 
-                    if (!order.hasOwnProperty('savedPaidAmount')) {
-                        order.savedPaidAmount = order.paidAmount || 0;
+                // Если включаем оплату и нет примечания - проверка
+                if (shouldBePaid && (!order.paymentNotes || !order.paymentNotes.trim())) {
+                    if (!confirm('⚠️ Примечание по оплате не заполнено.\nТочно зафиксировать оплату?')) {
+                        // Возвращаем чекбокс в исходное состояние
+                        const checkbox = document.getElementById(`payment-${orderId}`);
+                        if (checkbox) {
+                            checkbox.checked = !shouldBePaid;
+                        }
+                        return;
                     }
+                }
 
-                    if (shouldBePaid) {
-                        order.paidAmount = finalAmount;
-                    } else {
-                        order.paidAmount = order.savedPaidAmount;
-                    }
+                // Существующий код togglePayment
+                const totalAmount = order.totalAmount || 0;
+                const discount = order.discount || 0;
+                const finalAmount = totalAmount - (totalAmount * (discount / 100));
 
-                    let allReturned = true;
+                if (!order.hasOwnProperty('savedPaidAmount')) {
+                    order.savedPaidAmount = order.paidAmount || 0;
+                }
+
+                if (shouldBePaid) {
+                    order.paidAmount = finalAmount;
+                } else {
+                    order.paidAmount = order.savedPaidAmount;
+                }
+
+                let allReturned = true;
+                order.clients.forEach(client => {
+                    client.equipment.forEach(eq => {
+                        if (!order.equipmentStatuses || order.equipmentStatuses[eq.equipmentId] !== 'returned') {
+                            allReturned = false;
+                        }
+                    });
+                });
+
+                if (allReturned && shouldBePaid && order.status !== 'completed') {
+                    order.status = 'completed';
                     order.clients.forEach(client => {
                         client.equipment.forEach(eq => {
-                            if (!order.equipmentStatuses || order.equipmentStatuses[eq.equipmentId] !== 'returned') {
-                                allReturned = false;
-                            }
+                            const item = App.db.equipment.find(e => e.id === eq.equipmentId);
+                            if (item) item.status = 'available';
                         });
                     });
-
-                    if (allReturned && shouldBePaid && order.status !== 'completed') {
-                        order.status = 'completed';
-                        order.clients.forEach(client => {
-                            client.equipment.forEach(eq => {
-                                const item = App.db.equipment.find(e => e.id === eq.equipmentId);
-                                if (item) item.status = 'available';
-                            });
-                        });
-                        App.utils.showNotification(`Заказ №${order.orderNumber} завершен`);
-                        App.equipment.render();
-                    }
-
-                    App.storage.save();
-                    if (App.firebase.currentUser && App.firebase.syncEnabled) {
-                        App.firebase.saveToFirebase('orders', order);
-                    }
-
-                    App.orders.render();
-                    App.calendar.updateSelectedDatePanel(App.state.selectedDate);
+                    App.utils.showNotification(`Заказ №${order.orderNumber} завершен`);
+                    App.equipment.render();
                 }
+
+                App.storage.save();
+                if (App.firebase.currentUser && App.firebase.syncEnabled) {
+                    App.firebase.saveToFirebase('orders', order);
+                }
+
+                App.orders.render();
+                App.calendar.render(App.state.currentDate);
+                App.calendar.updateSelectedDatePanel(App.state.selectedDate);
             },
 
             updateEquipmentStatus(equipmentId, status, orderId) {
@@ -4550,6 +4698,141 @@
                 App.orders.render();
                 App.calendar.render(App.state.currentDate);
                 App.calendar.updateDayEquipment(App.state.selectedDate);
+            },
+
+            async printContract() {
+                if (!App.state.selectedStartDate || !App.state.selectedEndDate) {
+                    alert('Выберите даты аренды');
+                    return;
+                }
+
+                const orderData = App.orders.collectData();
+                if (!orderData.clients || orderData.clients.length === 0) {
+                    alert('Добавьте клиентов в заказ');
+                    return;
+                }
+
+                const contractHtml = App.orders.generateContractHtml(orderData);
+
+                const container = document.createElement('div');
+                container.innerHTML = contractHtml;
+                container.style.position = 'absolute';
+                container.style.left = '-9999px';
+                container.style.width = '210mm';
+                container.style.background = 'white';
+                document.body.appendChild(container);
+
+                try {
+                    const canvas = await html2canvas(container, {
+                        scale: 2,
+                        useCORS: true,
+                        logging: false
+                    });
+
+                    const imgData = canvas.toDataURL('image/png');
+                    const { jsPDF } = window.jspdf;
+                    const pdf = new jsPDF('p', 'mm', 'a4');
+
+                    const imgWidth = 210;
+                    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+                    pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+
+                    const fileName = `Договор_${orderData.orderNumber || 'новый'}_${new Date().toLocaleDateString('ru-RU').replace(/\./g, '-')}.pdf`;
+                    pdf.save(fileName);
+
+                    App.utils.showNotification('PDF сохранен');
+                } catch (error) {
+                    console.error('PDF generation error:', error);
+                    alert('Ошибка создания PDF');
+                } finally {
+                    document.body.removeChild(container);
+                }
+            },
+
+            generateContractHtml(orderData) {
+                const startDate = App.state.selectedStartDate;
+                const endDate = App.state.selectedEndDate;
+                const pickupTime = document.getElementById('pickup-time').value;
+                const returnTime = document.getElementById('return-time').value;
+
+                const startDateStr = startDate.toLocaleDateString('ru-RU');
+                const endDateStr = endDate.toLocaleDateString('ru-RU');
+
+                const firstClient = orderData.clients[0];
+                const client = App.db.clients.find(c => c.id === firstClient.clientId);
+
+                let equipmentList = '';
+                let equipmentIndex = 1;
+
+                orderData.clients.forEach(clientOrder => {
+                    clientOrder.equipment.forEach(eq => {
+                        const equipment = App.db.equipment.find(e => e.id === eq.equipmentId);
+                        if (equipment) {
+                            const price = App.orders.getPrice(equipment);
+                            const chars = equipment.length ? equipment.length + ' см' : (equipment.size || equipment.bindingSize || '-');
+                            equipmentList += '<tr><td>' + equipmentIndex + '</td><td>' + equipment.name + '</td><td>' + chars + '</td><td>1</td><td>' + price + '</td></tr>';
+                            equipmentIndex++;
+                        }
+                    });
+                });
+
+                const totalAmount = orderData.totalAmount || 0;
+                const discount = orderData.discount || 0;
+                const finalAmount = totalAmount - (totalAmount * discount / 100);
+
+                const clientName = client ? client.name : '___________________';
+                const clientPhone = client ? client.phone : '___________________';
+                const orderNum = orderData.orderNumber;
+                const day = startDate.getDate();
+                const month = startDate.toLocaleDateString('ru-RU', { month: 'long' });
+                const year = startDate.getFullYear();
+                const discountLine = discount > 0 ? ' Скидка: ' + discount + '%. Итого к оплате: <strong>' + finalAmount.toFixed(2) + '</strong> рублей.' : '';
+
+                return `
+        <div style="padding: 40px; font-family: Arial, sans-serif; max-width: 210mm; margin: 0 auto; background: white;">
+            <div style="text-align: center; margin-bottom: 30px;">
+                <h2 style="margin: 0 0 10px 0;">ДОГОВОР АРЕНДЫ</h2>
+                <p style="margin: 0;">№${orderNum} от ${day} ${month} ${year} г.</p>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <p style="margin: 5px 0;"><strong>Арендатор:</strong> ${clientName}</p>
+                <p style="margin: 5px 0;"><strong>Телефон:</strong> ${clientPhone}</p>
+                <p style="margin: 5px 0;"><strong>Период аренды:</strong> с ${startDateStr} ${pickupTime} по ${endDateStr} ${returnTime}</p>
+            </div>
+            
+            <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                <thead>
+                    <tr style="background: #f0f0f0;">
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">№</th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Наименование</th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Характеристики</th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Кол-во</th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Цена</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${equipmentList}
+                </tbody>
+            </table>
+            
+            <div style="margin: 20px 0;">
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Общая стоимость:</strong> ${totalAmount.toFixed(2)} рублей.${discountLine}</p>
+            </div>
+            
+            <div style="margin-top: 50px; display: flex; justify-content: space-between;">
+                <div>
+                    <p style="margin: 0;"><strong>Арендодатель:</strong></p>
+                    <p style="margin: 20px 0 0 0;">_________________</p>
+                </div>
+                <div>
+                    <p style="margin: 0;"><strong>Арендатор:</strong></p>
+                    <p style="margin: 20px 0 0 0;">_________________</p>
+                </div>
+            </div>
+        </div>
+    `;
             }
         };
 
@@ -5472,15 +5755,46 @@
 
         // Categories Module
         App.categories = {
-            openModal() {
+            openModal(categoryId = null) {
                 const parentSelect = document.getElementById('parent-category');
                 const mainCategories = App.db.categories.filter(c => c.type === 'main');
                 parentSelect.innerHTML = '<option value="">Выберите родительскую категорию...</option>' +
-                    mainCategories.map(cat => `<option value="${cat.id}">${cat.name}</option>`).join('');
+                    mainCategories.map(cat => `<option value = "${cat.id}" > ${cat.name}</option > `).join('');
 
-                document.getElementById('category-name').value = '';
-                document.getElementById('category-type').value = '';
-                document.getElementById('parent-category-group').style.display = 'none';
+                const deleteBtn = document.getElementById('delete-category-btn');
+
+                if (categoryId) {
+                    // Режим редактирования
+                    const category = App.db.categories.find(c => c.id === categoryId);
+                    if (!category) return;
+
+                    App.state.currentEditingCategory = categoryId;
+
+                    document.getElementById('category-name').value = category.name;
+                    document.getElementById('category-type').value = category.type;
+                    document.getElementById('category-additional-price').value = category.additionalPrice || 0;
+
+                    if (category.type === 'auxiliary' && category.parent) {
+                        document.getElementById('parent-category-group').style.display = 'block';
+                        document.getElementById('parent-category').value = category.parent;
+                    } else {
+                        document.getElementById('parent-category-group').style.display = 'none';
+                    }
+
+                    deleteBtn.style.display = 'block';
+                    document.querySelector('#category-modal .modal-title').textContent = 'Редактировать категорию';
+                } else {
+                    // Режим создания
+                    App.state.currentEditingCategory = null;
+
+                    document.getElementById('category-name').value = '';
+                    document.getElementById('category-type').value = '';
+                    document.getElementById('category-additional-price').value = '0';
+                    document.getElementById('parent-category-group').style.display = 'none';
+
+                    deleteBtn.style.display = 'none';
+                    document.querySelector('#category-modal .modal-title').textContent = 'Добавить категорию';
+                }
 
                 document.getElementById('category-modal').classList.add('show');
             },
@@ -5500,6 +5814,7 @@
                 const name = document.getElementById('category-name').value.trim();
                 const type = document.getElementById('category-type').value;
                 const parent = document.getElementById('parent-category').value;
+                const additionalPrice = parseFloat(document.getElementById('category-additional-price').value) || 0;
 
                 if (!name || !type) {
                     alert('Заполните обязательные поля');
@@ -5511,19 +5826,34 @@
                     return;
                 }
 
-                const newCategory = {
-                    id: name.toLowerCase().replace(/\s+/g, '-'),
-                    name: name,
-                    type: type,
-                    ...(parent && { parent: parent })
-                };
-
-                App.db.categories.push(newCategory);
+                if (App.state.currentEditingCategory) {
+                    // Редактирование
+                    const index = App.db.categories.findIndex(c => c.id === App.state.currentEditingCategory);
+                    if (index !== -1) {
+                        App.db.categories[index] = {
+                            ...App.db.categories[index],
+                            name: name,
+                            type: type,
+                            additionalPrice: additionalPrice,
+                            ...(parent && { parent: parent })
+                        };
+                        App.utils.showNotification('Категория обновлена');
+                    }
+                } else {
+                    // Создание
+                    const newCategory = {
+                        id: name.toLowerCase().replace(/\s+/g, '-'),
+                        name: name,
+                        type: type,
+                        additionalPrice: additionalPrice,
+                        ...(parent && { parent: parent })
+                    };
+                    App.db.categories.push(newCategory);
+                    App.utils.showNotification('Категория добавлена');
+                }
 
                 App.categories.updateTabs();
-
                 App.modals.close('category-modal');
-                App.utils.showNotification('Категория добавлена');
                 App.firebase.saveToFirebase('settings', {});
                 App.storage.save();
             },
@@ -5551,15 +5881,15 @@
                 const dependentCategories = App.db.categories.filter(c => c.parent === categoryId);
 
                 // Формируем сообщение подтверждения
-                let confirmMessage = `Вы уверены, что хотите удалить категорию "${category.name}"?`;
+                let confirmMessage = `Вы уверены, что хотите удалить категорию "${category.name}" ? `;
 
                 if (equipmentInCategory.length > 0) {
-                    confirmMessage += `\n\nВ этой категории ${equipmentInCategory.length} единиц оборудования. При удалении категории оборудование останется, но будет без категории.`;
+                    confirmMessage += `\n\nВ этой категории ${equipmentInCategory.length} единиц оборудования.При удалении категории оборудование останется, но будет без категории.`;
                 }
 
                 if (dependentCategories.length > 0) {
                     const depNames = dependentCategories.map(c => c.name).join(', ');
-                    confirmMessage += `\n\nОт этой категории зависят вспомогательные категории: ${depNames}. Они также будут удалены.`;
+                    confirmMessage += `\n\nОт этой категории зависят вспомогательные категории: ${depNames}.Они также будут удалены.`;
                 }
 
                 if (!confirm(confirmMessage)) {
@@ -5606,6 +5936,7 @@
             updateTabs() {
                 const tabsContainer = document.getElementById('equipment-tabs');
                 const addButton = tabsContainer.querySelector('.add-category-btn');
+                const editButton = tabsContainer.querySelector('.edit-category-btn');
 
                 const oldTabs = tabsContainer.querySelectorAll('.equipment-tab');
                 oldTabs.forEach(tab => tab.remove());
@@ -5629,13 +5960,6 @@
                     firstTab.classList.add('active');
                     App.equipment.render();
                 }
-
-                const deleteBtn = document.getElementById('delete-category-btn');
-                if (deleteBtn) {
-                    // Блокируем кнопку если нет активной категории или это последняя категория
-                    const hasActiveTab = document.querySelector('.equipment-tab.active');
-                    deleteBtn.disabled = !hasActiveTab || App.db.categories.length === 0;
-                }
             }
         };
 
@@ -5653,22 +5977,22 @@
                 container.innerHTML = App.db.priceCategories.map(pc => {
                     const equipmentCount = App.db.equipment.filter(e => e.priceCategoryId === pc.id).length;
                     return `
-                        <div style="padding: 12px 16px; background: #f8f9fa; border-radius: 8px; margin-bottom: 8px; cursor: pointer;"
-                             onclick="App.priceCategories.openModal(${pc.id})">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <div>
-                                    <div style="font-weight: 500; font-size: 14px;">${pc.name}</div>
-                                    <div style="font-size: 12px; color: #6c757d; margin-top: 4px;">
-                                        Дневной: ${pc.hourlyPrice}₽ | Сутки: ${pc.dailyPrice}₽ | 2+ сутки: ${pc.nextDaysPrice}₽
-                                    </div>
-                                    <div style="font-size: 11px; color: #868e96; margin-top: 2px;">
-                                        Привязано оборудования: ${equipmentCount}
-                                    </div>
-                                </div>
-                                <span class="material-icons" style="color: #dee2e6;">chevron_right</span>
-                            </div>
+                    <div style="padding: 12px 16px; background: #f8f9fa; border-radius: 8px; margin-bottom: 8px; cursor: pointer;"
+                             onclick="App.priceCategories.openModal(${pc.id})" >
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="font-weight: 500; font-size: 14px;">${pc.name}</div>
+                    <div style="font-size: 12px; color: #6c757d; margin-top: 4px;">
+                        Дневной: ${pc.hourlyPrice}₽ | Сутки: ${pc.dailyPrice}₽ | 2+ сутки: ${pc.nextDaysPrice}₽
+                    </div>
+                    <div style="font-size: 11px; color: #868e96; margin-top: 2px;">
+                        Привязано оборудования: ${equipmentCount}
+                    </div>
+                </div>
+                <span class="material-icons" style="color: #dee2e6;">chevron_right</span>
+            </div>
                         </div>
-                    `;
+            `;
                 }).join('');
             },
 
@@ -5756,7 +6080,7 @@
                 const equipmentCount = App.db.equipment.filter(e => e.priceCategoryId === App.state.currentEditingPriceCategory).length;
 
                 if (equipmentCount > 0) {
-                    if (!confirm(`К этой категории привязано ${equipmentCount} единиц оборудования. При удалении им будут установлены стандартные цены. Продолжить?`)) {
+                    if (!confirm(`К этой категории привязано ${equipmentCount} единиц оборудования.При удалении им будут установлены стандартные цены.Продолжить ? `)) {
                         return;
                     }
 
@@ -5808,13 +6132,13 @@
 
                 switch (period) {
                     case 'day':
-                        periodText = `Сегодня, ${today.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}`;
+                        periodText = `Сегодня, ${today.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })} `;
                         startDate = endDate = today;
                         break;
                     case 'week':
                         const weekStart = new Date(today);
                         weekStart.setDate(today.getDate() - today.getDay() + 1);
-                        periodText = `Неделя с ${weekStart.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}`;
+                        periodText = `Неделя с ${weekStart.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })} `;
                         startDate = weekStart;
                         endDate = today;
                         break;
@@ -5944,8 +6268,8 @@
                 const maxRevenue = Math.max(...chartData, 1);
 
                 chartContainer.innerHTML = `
-                    <div style="display: flex; height: 250px; align-items: flex-end; gap: 2px; padding: 10px;">
-                        ${chartData.map((value, index) => `
+                 <div style = "display: flex; height: 250px; align-items: flex-end; gap: 2px; padding: 10px;">
+                ${chartData.map((value, index) => `
                             <div style="flex: 1; display: flex; flex-direction: column; align-items: center;">
                                 <div style="width: 100%; background: linear-gradient(135deg, #667eea, #764ba2); 
                                             border-radius: 4px 4px 0 0; 
@@ -5958,15 +6282,16 @@
                                     ${labels[index]}
                                 </div>
                             </div>
-                        `).join('')}
-                    </div>
-                    ${chartData.every(v => v === 0) ?
+                        `).join('')
+                    }
+                    </div >
+            ${chartData.every(v => v === 0) ?
                         '<p style="text-align: center; color: #6c757d;">Нет данных за выбранный период</p>' :
                         `<p style="text-align: center; color: #6c757d; font-size: 12px;">
                             Всего: ${chartData.reduce((a, b) => a + b, 0).toFixed(0)}₽
                         </p>`
                     }
-                `;
+        `;
             },
 
             renderEquipmentUsageChart(startDate, endDate) {
@@ -6016,8 +6341,8 @@
                 const totalEquipment = App.db.equipment.length;
 
                 chartContainer.innerHTML = `
-                    <div style="display: flex; height: 200px; align-items: flex-end; gap: 2px; padding: 10px;">
-                        ${chartData.map((value, index) => {
+                <div style = "display: flex; height: 200px; align-items: flex-end; gap: 2px; padding: 10px;">
+                ${chartData.map((value, index) => {
                     const percentage = totalEquipment > 0 ? (value / totalEquipment * 100) : 0;
                     const color = percentage > 80 ? '#f5576c' : percentage > 50 ? '#ffa94d' : '#51cf66';
                     return `
@@ -6033,12 +6358,13 @@
                                     ${labels[index]}
                                 </div>
                             </div>
-                        `}).join('')}
-                    </div>
-                    <p style="text-align: center; color: #6c757d; font-size: 12px;">
-                        Всего оборудования: ${totalEquipment} единиц
-                    </p>
-                `;
+                        `}).join('')
+                    }
+                    </div >
+            <p style="text-align: center; color: #6c757d; font-size: 12px;">
+                Всего оборудования: ${totalEquipment} единиц
+            </p>
+        `;
             },
 
             renderTopEquipment(period) {
@@ -6049,17 +6375,17 @@
                 }
 
                 const categorySelect = `
-        <select id="equipment-category-select" 
-                style="width: 100%; padding: 10px 14px; border: 1px solid #dee2e6; 
-                       border-radius: 8px; font-size: 14px; font-family: inherit; 
-                       background: white; cursor: pointer; appearance: none;
-                       background-image: url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%2212%22 viewBox=%220 0 12 12%22%3E%3Cpath fill=%22%236c757d%22 d=%22M6 9L1 4h10z%22/%3E%3C/svg%3E');
-                       background-repeat: no-repeat; background-position: right 12px center;
-                       padding-right: 36px; transition: all 0.2s; margin-bottom: 12px;"
-                onchange="App.reports.updateTopEquipment(this.value, '${period}')">
+            <select id = "equipment-category-select"
+        style = "width: 100%; padding: 10px 14px; border: 1px solid #dee2e6; 
+        border - radius: 8px; font - size: 14px; font - family: inherit;
+        background: white; cursor: pointer; appearance: none;
+        background - image: url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%2212%22 viewBox=%220 0 12 12%22%3E%3Cpath fill=%22%236c757d%22 d=%22M6 9L1 4h10z%22/%3E%3C/svg%3E');
+        background - repeat: no - repeat; background - position: right 12px center;
+        padding - right: 36px; transition: all 0.2s; margin - bottom: 12px; "
+        onchange = "App.reports.updateTopEquipment(this.value, '${period}')">
             ${App.db.categories.map(cat => `<option value="${cat.id}">${cat.name}</option>`).join('')}
-        </select>
-    `;
+        </select >
+            `;
 
                 document.getElementById('equipment-top').innerHTML = categorySelect;
                 App.reports.updateTopEquipment(App.db.categories[0].id, period);
@@ -6112,7 +6438,7 @@
                 if (sorted.length > 0) {
                     const top = sorted[0];
                     container.innerHTML = selectHtml + `
-            <div class="equipment-card" style="margin-top:12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 12px; padding: 20px;">
+                <div class="equipment-card" style = "margin-top:12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 12px; padding: 20px;" >
                 <div style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">${top.item.name}</div>
                 <div style="display: flex; justify-content: space-between; margin-top: 12px;">
                     <div>
@@ -6124,8 +6450,8 @@
                         <div style="font-size: 12px; opacity: 0.9;">раз арендовано</div>
                     </div>
                 </div>
-            </div>
-        `;
+            </div >
+            `;
                 } else {
                     container.innerHTML = selectHtml + '<p style="text-align:center; color:#6c757d; margin-top:12px;">Нет данных для выбранной категории</p>';
                 }
@@ -6285,14 +6611,14 @@
 
             initializeCategories() {
                 App.db.categories = [
-                    { id: 'snowboards', name: 'Сноуборды', type: 'main', icon: 'snowboarding' },
-                    { id: 'skis', name: 'Лыжи', type: 'main', icon: 'downhill_skiing' },
-                    { id: 'snowboard-boots', name: 'Ботинки для сноуборда', type: 'auxiliary', parent: 'snowboards' },
-                    { id: 'ski-boots', name: 'Ботинки для лыж', type: 'auxiliary', parent: 'skis' },
-                    { id: 'bindings', name: 'Крепления', type: 'auxiliary', parent: 'snowboards' },
-                    { id: 'poles', name: 'Палочки', type: 'auxiliary', parent: 'skis' },
-                    { id: 'helmets', name: 'Шлемы', type: 'secondary' },
-                    { id: 'goggles', name: 'Маски', type: 'secondary' }
+                    { id: 'snowboards', name: 'Сноуборды', type: 'main', icon: 'snowboarding', additionalPrice: 0 },
+                    { id: 'skis', name: 'Лыжи', type: 'main', icon: 'downhill_skiing', additionalPrice: 0 },
+                    { id: 'snowboard-boots', name: 'Ботинки для сноуборда', type: 'auxiliary', parent: 'snowboards', additionalPrice: 200 },
+                    { id: 'ski-boots', name: 'Ботинки для лыж', type: 'auxiliary', parent: 'skis', additionalPrice: 200 },
+                    { id: 'bindings', name: 'Крепления', type: 'auxiliary', parent: 'snowboards', additionalPrice: 150 },
+                    { id: 'poles', name: 'Палочки', type: 'auxiliary', parent: 'skis', additionalPrice: 100 },
+                    { id: 'helmets', name: 'Шлемы', type: 'secondary', additionalPrice: 0 },
+                    { id: 'goggles', name: 'Маски', type: 'secondary', additionalPrice: 0 }
                 ];
             },
 
@@ -6424,7 +6750,6 @@
                 const firebaseConfig = {
                     apiKey: "AIzaSyBeVWYjvGiFvbs3ovqLYHZAyQqz8ArFj5E",
                     authDomain: "active-and-positive.firebaseapp.com",
-                    databaseURL: "https://active-and-positive-default-rtdb.firebaseio.com",
                     projectId: "active-and-positive",
                     storageBucket: "active-and-positive.firebasestorage.app",
                     messagingSenderId: "418586546672",
@@ -6434,7 +6759,7 @@
                 try {
                     // Инициализируем Firebase с конфигурацией
                     firebase.initializeApp(firebaseConfig);
-                    App.firebase.db = firebase.database(); // database
+                    App.firebase.db = firebase.database();
                     App.firebase.auth = firebase.auth();
 
                     // Проверяем авторизацию
@@ -6459,7 +6784,7 @@
 
             checkSyncEnabled() {
                 if (App.firebase.currentUser) {
-                    const userRef = App.firebase.db.ref(`users/${App.firebase.currentUser.uid}/settings/syncEnabled`);
+                    const userRef = App.firebase.db.ref(`users / ${App.firebase.currentUser.uid} /settings/syncEnabled`);
                     userRef.once('value').then(snapshot => {
                         App.firebase.syncEnabled = snapshot.val() !== false;
                         if (App.firebase.syncEnabled) {
@@ -6479,7 +6804,7 @@
                 App.firebase.auth.signInWithPopup(provider)
                     .then((result) => {
                         App.firebase.currentUser = result.user;
-                        App.utils.showNotification(`Вы вошли как ${App.firebase.currentUser.email}`);
+                        App.utils.showNotification(`Вы вошли как ${App.firebase.currentUser.email} `);
                         App.firebase.updateAuthUI();
                         App.firebase.enableSync();
                         App.storage.save();
@@ -6509,25 +6834,25 @@
 
                 if (App.firebase.currentUser) {
                     authContainer.innerHTML = `
-                        <div style="padding: 16px; background: #e7f5ff; border-radius: 8px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <div>
-                                    <div style="font-weight: 500; margin-bottom: 4px;">Вы вошли как:</div>
-                                    <div style="font-size: 14px; color: #0c63e4;">${App.firebase.currentUser.email}</div>
-                                    <div style="font-size: 12px; color: #6c757d; margin-top: 4px;">
-                                        Синхронизация: <span style="color: #2dce89;">активна</span>
-                                    </div>
-                                </div>
-                                <button class="btn btn-danger" onclick="App.firebase.signOut()">
-                                    <span class="material-icons">logout</span>
-                                    Выйти
-                                </button>
-                            </div>
+                 <div style = "padding: 16px; background: #e7f5ff; border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-weight: 500; margin-bottom: 4px;">Вы вошли как:</div>
+                        <div style="font-size: 14px; color: #0c63e4;">${App.firebase.currentUser.email}</div>
+                        <div style="font-size: 12px; color: #6c757d; margin-top: 4px;">
+                            Синхронизация: <span style="color: #2dce89;">активна</span>
                         </div>
-                    `;
+                    </div>
+                    <button class="btn btn-danger" onclick="App.firebase.signOut()">
+                        <span class="material-icons">logout</span>
+                        Выйти
+                    </button>
+                </div>
+                        </div >
+            `;
                 } else {
                     authContainer.innerHTML = `
-                        <div style="padding: 16px; background: #f8f9fa; border-radius: 8px;">
+                            <div style = "padding: 16px; background: #f8f9fa; border-radius: 8px;">
                             <p style="margin-bottom: 12px; color: #6c757d;">
                                 Войдите для синхронизации данных между устройствами
                             </p>
@@ -6535,8 +6860,8 @@
                                 <span class="material-icons">login</span>
                                 Войти через Google
                             </button>
-                        </div>
-                    `;
+                        </div >
+            `;
                 }
             },
 
@@ -6920,14 +7245,25 @@
 
                 // Buttons
                 document.getElementById('new-order-btn').addEventListener('click', () => App.orders.openModal());
+                document.getElementById('new-client-header-btn').addEventListener('click', () => App.clients.openModal());
                 document.getElementById('add-client-btn').addEventListener('click', () => App.clients.openModal());
                 document.getElementById('add-equipment-btn').addEventListener('click', () => App.equipment.openModal());
                 document.getElementById('add-category-btn').addEventListener('click', () => App.categories.openModal());
-                document.getElementById('delete-category-btn').addEventListener('click', () => App.categories.delete());
+                document.getElementById('edit-category-btn').addEventListener('click', () => {
+                    const activeTab = document.querySelector('.equipment-tab.active');
+                    if (activeTab) {
+                        App.categories.openModal(activeTab.dataset.category);
+                    } else {
+                        alert('Выберите категорию для редактирования');
+                    }
+                });
 
                 // Order form
                 document.getElementById('add-client-to-order').addEventListener('click', App.orders.addClientToOrder);
                 document.getElementById('create-order-btn').addEventListener('click', App.orders.create);
+                document.getElementById('print-contract-btn').addEventListener('click', () => {
+                    App.orders.printContract();
+                });
 
                 // Date picker navigation
                 document.getElementById('date-prev-month').addEventListener('click', () => {
@@ -6948,6 +7284,27 @@
                 // Form calculations
                 document.getElementById('discount').addEventListener('input', App.orders.updateRemainingAmount);
                 document.getElementById('paid-amount').addEventListener('input', App.orders.updateRemainingAmount);
+
+                document.getElementById('paid-amount').addEventListener('blur', function () {
+                    const paidAmount = parseFloat(this.value) || 0;
+                    const paymentNotes = document.getElementById('payment-notes').value.trim();
+
+                    if (paidAmount > 0 && !paymentNotes) {
+                        const warning = document.createElement('div');
+                        warning.style.cssText = 'color: #dc3545; font-size: 12px; margin-top: 4px;';
+                        warning.textContent = '⚠️ Рекомендуется заполнить примечание по оплате';
+                        warning.id = 'payment-warning';
+
+                        const existing = document.getElementById('payment-warning');
+                        if (existing) existing.remove();
+
+                        this.parentElement.appendChild(warning);
+                    } else {
+                        const existing = document.getElementById('payment-warning');
+                        if (existing) existing.remove();
+                    }
+                });
+
                 document.getElementById('total-amount').addEventListener('input', App.orders.updateRemainingAmount);
                 document.getElementById('pickup-time').addEventListener('change', function () {
                     App.orders.calculateTotal();
@@ -7049,13 +7406,40 @@
 
                 // Close modals
                 document.querySelectorAll('.modal').forEach(modal => {
+                    let clickCount = 0;
+                    let clickTimer = null;
+
                     modal.addEventListener('click', function (e) {
                         if (e.target === this) {
-                            const modalId = this.id;
-                            if (modalId === 'order-modal' && !App.state.currentEditingOrder) {
-                                App.orders.autoSaveDraft();
+                            clickCount++;
+
+                            if (clickCount === 1) {
+                                clickTimer = setTimeout(() => {
+                                    clickCount = 0;
+                                }, 300);
+                            } else if (clickCount === 2) {
+                                clearTimeout(clickTimer);
+                                clickCount = 0;
+
+                                const modalId = this.id;
+
+                                // Сохраняем в зависимости от модалки
+                                if (modalId === 'order-modal') {
+                                    document.getElementById('create-order-btn').click();
+                                } else if (modalId === 'client-modal') {
+                                    document.getElementById('save-client-btn').click();
+                                } else if (modalId === 'equipment-add-modal') {
+                                    document.getElementById('save-equipment-btn').click();
+                                } else if (modalId === 'equipment-detail-modal') {
+                                    document.getElementById('save-equipment-btn-detail').click();
+                                } else if (modalId === 'price-category-modal') {
+                                    document.getElementById('save-price-category-btn').click();
+                                } else if (modalId === 'category-modal') {
+                                    document.getElementById('save-category-btn').click();
+                                } else {
+                                    App.modals.close(modalId);
+                                }
                             }
-                            App.modals.close(modalId);
                         }
                     });
                 });
@@ -7111,7 +7495,6 @@
             }
         };
 
-        // Initialize Application
         App.init = function () {
             if (localStorage.getItem('autosaveEnabled') === null) {
                 App.state.autosaveEnabled = true;
@@ -7125,6 +7508,7 @@
             App.pwa.init();
             App.calendar.render(App.state.currentDate);
             App.calendar.updateSelectedDatePanel(App.state.selectedDate);
+            App.orders.cleanOldDrafts();
             App.orders.render();
             App.clients.render();
             App.equipment.render();
@@ -7145,4 +7529,3 @@
 </body>
 
 </html>
-
