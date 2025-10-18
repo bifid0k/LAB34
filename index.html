@@ -7452,7 +7452,7 @@
                         App.db.priceCategories = firebasePriceCategories;
                     }
 
-                    showNotification('Данные загружены из облака');
+                    App.utils.showNotification('Данные загружены из облака');
 
                     // Обновляем UI
                     App.calendar.render(App.state.currentDate);
@@ -7474,13 +7474,14 @@
 
                 const userId = App.firebase.currentUser.uid;
                 const batch = App.firebase.db.batch();
+                const db = App.firebase.db;
 
                 try {
                     // Проверяем, есть ли уже данные в Firebase
                     const settingsDoc = await db.collection('users').doc(userId).get();
                     if (!settingsDoc.exists) {
                         // Загружаем все локальные данные в Firebase
-                        showNotification('Первичная синхронизация...');
+                        App.utils.showNotification('Первичная синхронизация...');
 
                         // Настройки
                         batch.set(db.collection('users').doc(userId), {
@@ -7524,11 +7525,11 @@
                         });
 
                         await batch.commit();
-                        showNotification('Данные успешно синхронизированы');
+                        App.utils.showNotification('Данные успешно синхронизированы');
                     }
                 } catch (error) {
                     console.error('Ошибка первичной синхронизации:', error);
-                    showNotification('Ошибка синхронизации');
+                    App.utils.showNotification('Ошибка синхронизации');
                 }
             },
 
