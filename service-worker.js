@@ -1,8 +1,8 @@
 const CACHE_NAME = 'rental-app-v1.0.0';
 const urlsToCache = [
-    '/',
-    '/index.html',
-    // Добавьте сюда другие файлы если они есть
+    './',
+    'https://fonts.googleapis.com/icon?family=Material+Icons',
+    'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap'
 ];
 
 // Установка Service Worker
