@@ -1288,6 +1288,21 @@
             box-shadow: 0 4px 12px rgba(94, 114, 228, 0.3);
         }
 
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 998;
+        }
+
+        .sidebar-overlay.show {
+            display: block;
+        }
+
         @keyframes pulse {
 
             0%,
@@ -1306,20 +1321,140 @@
         }
 
         /* Mobile Responsive */
-        @media (max-width: 1024px) {
+        @media (max-width: 1200px) {
+
+            /* Скрываемый sidebar как на мобильном */
             .sidebar {
-                width: 220px;
+                position: fixed;
+                left: -260px;
+                z-index: 999;
+                height: 100vh;
+                width: 260px;
+                overflow-y: auto;
             }
 
+            .sidebar.open {
+                left: 0;
+                box-shadow: 4px 0 24px rgba(0, 0, 0, 0.2);
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
+
+            /* Уменьшенный header */
+            .header {
+                height: 52px;
+                padding: 10px 20px 10px 56px;
+                position: relative;
+            }
+
+            .header h2 {
+                font-size: 18px;
+            }
+
+            /* Кнопка-гамбургер */
+            .header::before {
+                content: '☰';
+                position: absolute;
+                left: 16px;
+                top: 50%;
+                transform: translateY(-50%);
+                font-size: 22px;
+                cursor: pointer;
+                z-index: 10;
+                color: var(--text-primary);
+            }
+
+            /* Уменьшенный sidebar */
+            .sidebar-header {
+                padding: 18px 16px;
+            }
+
+            .sidebar-header h1 {
+                font-size: 20px;
+            }
+
+            .sidebar-header p {
+                font-size: 12px;
+            }
+
+            .sidebar-menu a {
+                padding: 11px 16px;
+                font-size: 13px;
+            }
+
+            .sidebar-menu .material-icons {
+                font-size: 18px;
+                margin-right: 10px;
+            }
+
+            /* Уменьшенная панель today */
             .today-panel {
-                width: 300px;
+                width: 260px;
+                padding: 12px;
             }
 
+            .today-panel h3 {
+                font-size: 16px;
+                margin-bottom: 12px;
+            }
+
+            .today-date {
+                font-size: 13px;
+                padding: 8px;
+                margin-bottom: 12px;
+            }
+
+            .today-equipment-item {
+                padding: 8px;
+                margin-bottom: 8px;
+                font-size: 12px;
+            }
+
+            .today-equipment-item strong {
+                font-size: 13px;
+            }
+
+            /* Календарь на всю ширину */
+            .calendar-main {
+                flex: 1;
+                padding: 16px;
+            }
+
+            .calendar-container {
+                padding: 16px;
+            }
+
+            /* Уменьшенные ячейки календаря */
+            .calendar-day {
+                min-height: 70px;
+                aspect-ratio: auto;
+                font-size: 11px;
+                padding: 6px;
+            }
+
+            .calendar-day-number {
+                font-size: 13px;
+            }
+
+            /* Кнопки header */
+            .btn {
+                padding: 8px 16px;
+                font-size: 13px;
+            }
+
+            .btn .material-icons {
+                font-size: 18px;
+            }
+
+            /* Модальные окна */
             .modal-content {
                 max-width: 90%;
                 margin: 20px;
             }
 
+            /* Формы */
             .date-time-section {
                 grid-template-columns: 1fr;
             }
@@ -1327,8 +1462,27 @@
             .form-row {
                 grid-template-columns: 1fr;
             }
+
+            /* Списки */
+            .list-container {
+                padding: 16px;
+            }
+
+            /* Вкладки оборудования */
+            .equipment-tabs {
+                overflow-x: auto;
+                flex-wrap: nowrap;
+                padding-bottom: 8px;
+            }
+
+            .equipment-tab {
+                white-space: nowrap;
+                font-size: 13px;
+                padding: 8px 16px;
+            }
         }
 
+        /* Для устройств меньше 768px оставить как есть, но добавить несколько правок */
         @media (max-width: 768px) {
             .sidebar {
                 position: fixed;
@@ -1346,14 +1500,23 @@
             }
 
             .header {
-                padding-left: 60px;
+                padding-left: 56px;
+                height: 48px;
+                padding-top: 8px;
+                padding-bottom: 8px;
+            }
+
+            .header h2 {
+                font-size: 16px;
             }
 
             .header::before {
                 content: '☰';
                 position: absolute;
-                left: 20px;
-                font-size: 24px;
+                left: 16px;
+                top: 50%;
+                transform: translateY(-50%);
+                font-size: 20px;
                 cursor: pointer;
                 z-index: 10;
             }
@@ -1364,15 +1527,16 @@
 
             .calendar-main {
                 flex: 1;
+                padding: 12px;
             }
 
             .list-container {
-                padding: 16px;
+                padding: 12px;
             }
 
             .calendar-day {
                 min-height: 80px;
-                font-size: 11px;
+                font-size: 10px;
             }
 
             .equipment-tabs {
@@ -1383,6 +1547,8 @@
 
             .equipment-tab {
                 white-space: nowrap;
+                font-size: 12px;
+                padding: 6px 12px;
             }
 
             .equipment-item input[type="checkbox"] {
@@ -1406,21 +1572,14 @@
                 border-top: 1px solid #e9ecef;
             }
 
-            select[data-category="main-type"] {
-                padding: 12px 14px;
-                border: 1px solid var(--border-color);
-                border-radius: var(--border-radius);
-                font-size: 14px;
-                font-family: inherit;
-                transition: all 0.2s;
-                background: white;
-                cursor: pointer;
+            .btn {
+                padding: 7px 12px;
+                font-size: 12px;
             }
 
-            select[data-category="main-type"]:focus {
-                outline: none;
-                border-color: var(--primary-color);
-                box-shadow: 0 0 0 3px rgba(94, 114, 228, 0.1);
+            select[data-category="main-type"] {
+                padding: 10px 12px;
+                font-size: 13px;
             }
         }
     </style>
@@ -1439,6 +1598,7 @@
 </head>
 
 <body>
+    <div class="sidebar-overlay"></div>
     <div class="app-container">
         <!-- Sidebar -->
         <div class="sidebar" id="sidebar">
@@ -2225,6 +2385,11 @@
                         <small style="color: #6c757d;">Для разовых услуг (заточка и т.д.). Если установлена, другие цены
                             игнорируются</small>
                     </div>
+                </div>
+                <div class="form-group" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e9ecef;">
+                    <label>Стоимость оборудования (₽) *</label>
+                    <input type="number" id="equipment-price" step="100" min="0" required>
+                    <small style="color: #6c757d;">Цена для возмещения при утере/порче</small>
                 </div>
             </div>
             <div class="modal-footer">
@@ -4807,21 +4972,85 @@
                 const firstClient = orderData.clients[0];
                 const client = App.db.clients.find(c => c.id === firstClient.clientId);
 
+                const startDateTime = new Date(startDate);
+                const [startHour, startMin] = pickupTime.split(':').map(Number);
+                startDateTime.setHours(startHour, startMin, 0, 0);
+
+                const endDateTime = new Date(endDate);
+                const [endHour, endMin] = returnTime.split(':').map(Number);
+                endDateTime.setHours(endHour, endMin, 0, 0);
+
+                const isSameDay = startDateTime.toDateString() === endDateTime.toDateString();
+                const daysDiff = Math.ceil((endDateTime - startDateTime) / (1000 * 3600 * 24));
+
                 let equipmentList = '';
                 let equipmentIndex = 1;
 
                 if (App.state.currentOrderBreakdown && App.state.currentOrderBreakdown.length > 0) {
                     App.state.currentOrderBreakdown.forEach(item => {
+                        const equipment = App.db.equipment.find(e => e.id === item.equipmentId);
+                        if (!equipment) return;
+
+                        const equipmentPrice = equipment.equipmentPrice || 0;
+
+                        // Получаем цены
+                        let prices;
+                        if (equipment.priceCategoryId) {
+                            const category = App.db.priceCategories.find(pc => pc.id === equipment.priceCategoryId);
+                            prices = category || { dailyPrice: 0, nextDaysPrice: 0, oneTimePrice: 0 };
+                        } else {
+                            prices = {
+                                dailyPrice: equipment.dailyPrice || 0,
+                                nextDaysPrice: equipment.nextDaysPrice || 0,
+                                oneTimePrice: equipment.oneTimePrice || 0
+                            };
+                        }
+
+                        let firstDayPrice, nextDaysPrice;
+
+                        if (item.isKit) {
+                            // Комплект - используем additionalPrice категории
+                            const category = App.db.categories.find(c => c.id === equipment.category);
+                            const additionalPrice = category?.additionalPrice || 0;
+                            firstDayPrice = additionalPrice;
+                            nextDaysPrice = isSameDay ? '-' : additionalPrice;
+                        } else if (prices.oneTimePrice > 0) {
+                            // Разовая услуга
+                            firstDayPrice = prices.oneTimePrice;
+                            nextDaysPrice = '-';
+                        } else {
+                            // Обычная аренда
+                            firstDayPrice = prices.dailyPrice || 0;
+                            nextDaysPrice = prices.nextDaysPrice || prices.dailyPrice || 0;
+                        }
+
                         const kitLabel = item.isKit ? ' (комплект)' : '';
-                        equipmentList += '<tr><td style="border: 1px solid #ddd; padding: 4px; font-size: 10px;">' + equipmentIndex + '</td><td style="border: 1px solid #ddd; padding: 4px; font-size: 10px;">' + item.equipmentName + kitLabel + '</td><td style="border: 1px solid #ddd; padding: 4px; font-size: 10px;">1</td><td style="border: 1px solid #ddd; padding: 4px; font-size: 10px;">' + item.price.toFixed(2) + ' ₽</td></tr>';
+
+                        equipmentList += `<tr>
+                <td style="border: 1px solid #ddd; padding: 4px; font-size: 10px; text-align: center;">${equipmentIndex}</td>
+                <td style="border: 1px solid #ddd; padding: 4px; font-size: 10px;">${equipment.name}${kitLabel}</td>
+                <td style="border: 1px solid #ddd; padding: 4px; font-size: 10px; text-align: right;">${equipmentPrice.toLocaleString('ru-RU')} ₽</td>
+                <td style="border: 1px solid #ddd; padding: 4px; font-size: 10px; text-align: center;">1</td>
+                <td style="border: 1px solid #ddd; padding: 4px; font-size: 10px; text-align: right;">${typeof firstDayPrice === 'number' ? firstDayPrice.toLocaleString('ru-RU') + ' ₽' : firstDayPrice}</td>
+                <td style="border: 1px solid #ddd; padding: 4px; font-size: 10px; text-align: right;">${nextDaysPrice === '-' ? '-' : nextDaysPrice.toLocaleString('ru-RU') + ' ₽'}</td>
+            </tr>`;
                         equipmentIndex++;
                     });
                 } else {
+                    // Fallback если breakdown нет
                     orderData.clients.forEach(clientOrder => {
                         clientOrder.equipment.forEach(eq => {
                             const equipment = App.db.equipment.find(e => e.id === eq.equipmentId);
                             if (equipment) {
-                                equipmentList += '<tr><td style="border: 1px solid #ddd; padding: 4px; font-size: 10px;">' + equipmentIndex + '</td><td style="border: 1px solid #ddd; padding: 4px; font-size: 10px;">' + equipment.name + '</td><td style="border: 1px solid #ddd; padding: 4px; font-size: 10px;">1</td><td style="border: 1px solid #ddd; padding: 4px; font-size: 10px;">—</td></tr>';
+                                const equipmentPrice = equipment.equipmentPrice || 0;
+                                equipmentList += `<tr>
+                        <td style="border: 1px solid #ddd; padding: 4px; font-size: 10px; text-align: center;">${equipmentIndex}</td>
+                        <td style="border: 1px solid #ddd; padding: 4px; font-size: 10px;">${equipment.name}</td>
+                        <td style="border: 1px solid #ddd; padding: 4px; font-size: 10px; text-align: right;">${equipmentPrice.toLocaleString('ru-RU')} ₽</td>
+                        <td style="border: 1px solid #ddd; padding: 4px; font-size: 10px; text-align: center;">1</td>
+                        <td style="border: 1px solid #ddd; padding: 4px; font-size: 10px; text-align: right;">—</td>
+                        <td style="border: 1px solid #ddd; padding: 4px; font-size: 10px; text-align: right;">—</td>
+                    </tr>`;
                                 equipmentIndex++;
                             }
                         });
@@ -4858,10 +5087,12 @@
             <table style="width: 100%; border-collapse: collapse; margin: 8px 0;">
                 <thead>
                     <tr style="background: #f0f0f0;">
-                        <th style="border: 1px solid #ddd; padding: 4px; font-size: 10px; text-align: left; width: 8%;">№</th>
-                        <th style="border: 1px solid #ddd; padding: 4px; font-size: 10px; text-align: left; width: 62%;">Наименование</th>
-                        <th style="border: 1px solid #ddd; padding: 4px; font-size: 10px; text-align: left; width: 10%;">Кол-во</th>
-                        <th style="border: 1px solid #ddd; padding: 4px; font-size: 10px; text-align: left; width: 20%;">Цена аренды</th>
+                        <th style="border: 1px solid #ddd; padding: 4px; font-size: 10px; text-align: center; width: 5%;">№</th>
+                        <th style="border: 1px solid #ddd; padding: 4px; font-size: 10px; text-align: left; width: 32%;">Наименование</th>
+                        <th style="border: 1px solid #ddd; padding: 4px; font-size: 10px; text-align: right; width: 13%;">Стоимость</th>
+                        <th style="border: 1px solid #ddd; padding: 4px; font-size: 10px; text-align: center; width: 7%;">Кол-во</th>
+                        <th style="border: 1px solid #ddd; padding: 4px; font-size: 10px; text-align: right; width: 21%;">Первые сутки</th>
+                        <th style="border: 1px solid #ddd; padding: 4px; font-size: 10px; text-align: right; width: 22%;">Послед. сутки</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -4891,9 +5122,8 @@
             <p style="margin: 3px 0;">3.${discount > 0 ? '4' : '3'}. При просрочке возврата взимается плата в размере суточной аренды за каждые сутки просрочки.</p>
             
             <p style="margin: 10px 0 5px; font-weight: bold; font-size: 11px;">4. ОТВЕТСТВЕННОСТЬ СТОРОН</p>
-            <p style="margin: 3px 0;">4.1. За утрату или повреждение Оборудования Арендатор возмещает его полную стоимость или стоимость ремонта.</p>
-            <p style="margin: 3px 0;">4.2. За просрочку возврата Арендатор уплачивает пени в размере 0,5% от стоимости аренды за каждый день.</p>
-            <p style="margin: 3px 0;">4.3. Стороны освобождаются от ответственности при форс-мажорных обстоятельствах.</p>
+            <p style="margin: 3px 0;">4.1. За утрату или повреждение Оборудования Арендатор возмещает его полную стоимость согласно п. 1.1 или стоимость ремонта.</p>
+            <p style="margin: 3px 0;">4.2. Стороны освобождаются от ответственности при форс-мажорных обстоятельствах.</p>
             
             <p style="margin: 10px 0 5px; font-weight: bold; font-size: 11px;">5. ПОРЯДОК РАСТОРЖЕНИЯ</p>
             <p style="margin: 3px 0;">5.1. Договор может быть расторгнут досрочно по соглашению Сторон.</p>
@@ -5396,6 +5626,12 @@
                                                style="width: 100%; padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 6px;">
                                     </div>
                                 </div>
+                                <div style="margin: 16px 0; padding-top: 16px; border-top: 1px solid #e9ecef;">
+                                    <label style="display: block; font-weight: 500; margin-bottom: 4px;">Стоимость оборудования (₽):</label>
+                                    <input type="number" value="${equipmentItem.equipmentPrice || 0}" id="detail-equipment-price"
+                                        style="width: 100%; padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 6px;" step="100" min="0">
+                                    <small style="color: #6c757d; display: block; margin-top: 4px;">Цена для возмещения при утере/порче</small>
+                                </div>
                             </div>
                         </div>
                         
@@ -5423,6 +5659,8 @@
                     if (document.getElementById('detail-size')) equipmentItem.size = parseFloat(document.getElementById('detail-size').value);
                     if (document.getElementById('detail-binding-size')) equipmentItem.bindingSize = document.getElementById('detail-binding-size').value;
                     if (document.getElementById('detail-stiffness')) equipmentItem.stiffness = parseInt(document.getElementById('detail-stiffness').value);
+                    if (document.getElementById('detail-equipment-price')) equipmentItem.equipmentPrice = parseFloat(document.getElementById('detail-equipment-price').value) || 0;
+
                     equipmentItem.status = document.getElementById('detail-status').value;
 
                     const priceCategoryValue = document.getElementById('detail-price-category').value;
@@ -5768,6 +6006,7 @@
                 document.getElementById('equipment-daily-price').value = '';
                 document.getElementById('equipment-next-days-price').value = '';
                 document.getElementById('equipment-one-time-price').value = '';
+                document.getElementById('equipment-price').value = '';
 
                 App.equipment.updatePriceCategorySelect();
 
@@ -5802,6 +6041,7 @@
                 const length = parseInt(document.getElementById('equipment-length').value) || null;
                 const stiffness = parseInt(document.getElementById('equipment-stiffness').value) || null;
                 const status = document.getElementById('equipment-status').value;
+                const equipmentPrice = parseFloat(document.getElementById('equipment-price').value) || 0;
 
                 let size = null;
                 let bindingSize = null;
@@ -5827,7 +6067,8 @@
                     size: size,
                     bindingSize: bindingSize,
                     stiffness: stiffness,
-                    status: status
+                    status: status,
+                    equipmentPrice: equipmentPrice
                 };
 
                 if (priceCategoryId && priceCategoryId !== 'custom') {
@@ -7588,6 +7829,67 @@
                         document.getElementById('save-category-btn').click();
                     }
                 });
+
+                if (window.innerWidth <= 1200) {
+                    App.events.createSidebarOverlay();
+                }
+
+                document.querySelector('.header').addEventListener('click', function (e) {
+                    const isMobileOrTablet = window.innerWidth <= 1200;
+
+                    // Проверяем клик в области гамбургера (левая верхняя часть header)
+                    if (isMobileOrTablet && e.clientX < 50 && e.clientY < 70) {
+                        const sidebar = document.getElementById('sidebar');
+                        const overlay = App.events.createSidebarOverlay();
+
+                        sidebar.classList.toggle('open');
+                        overlay.classList.toggle('show');
+                    }
+                });
+
+                document.querySelectorAll('.menu-item').forEach(item => {
+                    const originalHandler = item.onclick;
+                    item.addEventListener('click', function () {
+                        if (window.innerWidth <= 1200) {
+                            const sidebar = document.getElementById('sidebar');
+                            const overlay = document.querySelector('.sidebar-overlay');
+                            if (sidebar && overlay) {
+                                sidebar.classList.remove('open');
+                                overlay.classList.remove('show');
+                            }
+                        }
+                    });
+                });
+
+                let resizeTimer;
+                window.addEventListener('resize', function () {
+                    clearTimeout(resizeTimer);
+                    resizeTimer = setTimeout(function () {
+                        if (window.innerWidth <= 1200) {
+                            App.events.createSidebarOverlay();
+                        } else {
+                            // Убираем overlay и классы при возврате на десктоп
+                            const sidebar = document.getElementById('sidebar');
+                            const overlay = document.querySelector('.sidebar-overlay');
+                            if (sidebar) sidebar.classList.remove('open');
+                            if (overlay) overlay.classList.remove('show');
+                        }
+                    }, 250);
+                });
+            },
+
+            createSidebarOverlay() {
+                let overlay = document.querySelector('.sidebar-overlay');
+                if (!overlay) {
+                    overlay = document.createElement('div');
+                    overlay.className = 'sidebar-overlay';
+                    overlay.addEventListener('click', function () {
+                        document.getElementById('sidebar').classList.remove('open');
+                        this.classList.remove('show');
+                    });
+                    document.body.appendChild(overlay);
+                }
+                return overlay;
             }
         };
 
