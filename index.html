@@ -1324,7 +1324,7 @@
         @media (max-width: 1200px) {
 
             /* Скрываемый sidebar как на мобильном */
-            .sidebar {
+            body.calendar-page-active .sidebar {
                 position: fixed;
                 left: -260px;
                 z-index: 999;
@@ -1333,19 +1333,42 @@
                 overflow-y: auto;
             }
 
-            .sidebar.open {
+            body.calendar-page-active .sidebar.open {
                 left: 0;
                 box-shadow: 4px 0 24px rgba(0, 0, 0, 0.2);
             }
 
-            .main-content {
+            body.calendar-page-active .main-content {
                 margin-left: 0;
+            }
+
+            /* На остальных страницах sidebar остаётся */
+            body:not(.calendar-page-active) .sidebar {
+                width: 200px;
+                overflow-y: auto;
+            }
+
+            body:not(.calendar-page-active) .sidebar-header {
+                padding: 18px 16px;
+            }
+
+            body:not(.calendar-page-active) .sidebar-header h1 {
+                font-size: 20px;
+            }
+
+            body:not(.calendar-page-active) .sidebar-header p {
+                font-size: 12px;
+            }
+
+            body:not(.calendar-page-active) .sidebar-menu a {
+                padding: 11px 16px;
+                font-size: 13px;
             }
 
             /* Уменьшенный header */
             .header {
                 height: 52px;
-                padding: 10px 20px 10px 56px;
+                padding: 10px 20px;
                 position: relative;
             }
 
@@ -1353,8 +1376,13 @@
                 font-size: 18px;
             }
 
+            body.calendar-page-active .header {
+                padding-left: 56px;
+            }
+
+
             /* Кнопка-гамбургер */
-            .header::before {
+            body.calendar-page-active .header::before {
                 content: '☰';
                 position: absolute;
                 left: 16px;
@@ -1589,7 +1617,7 @@
     <!-- Firebase Auth -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     <!-- Firebase Realtime Database -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -2860,6 +2888,18 @@
                 if (page === 'settings') {
                     App.settings.updateInfo();
                     App.priceCategories.render();
+                }
+
+                if (page === 'calendar') {
+                    document.body.classList.add('calendar-page-active');
+                } else {
+                    document.body.classList.remove('calendar-page-active');
+                    // Закрываем sidebar если был открыт
+                    if (window.innerWidth <= 1200) {
+                        document.getElementById('sidebar').classList.remove('open');
+                        const overlay = document.querySelector('.sidebar-overlay');
+                        if (overlay) overlay.classList.remove('show');
+                    }
                 }
             }
         };
@@ -7096,7 +7136,7 @@
                 try {
                     // Инициализируем Firebase с конфигурацией
                     firebase.initializeApp(firebaseConfig);
-                    App.firebase.db = firebase.database();
+                    App.firebase.db = firebase.firestore();
                     App.firebase.auth = firebase.auth();
 
                     // Проверяем авторизацию
@@ -7121,16 +7161,19 @@
 
             checkSyncEnabled() {
                 if (App.firebase.currentUser) {
-                    const userRef = App.firebase.db.ref(`users / ${App.firebase.currentUser.uid} /settings/syncEnabled`);
-                    userRef.once('value').then(snapshot => {
-                        App.firebase.syncEnabled = snapshot.val() !== false;
-                        if (App.firebase.syncEnabled) {
-                            App.firebase.loadFromFirebase();
-                        }
-                    }).catch(error => {
-                        console.error('Error checking sync settings:', error);
-                        App.firebase.syncEnabled = false;
-                    });
+                    App.firebase.db.collection('users').doc(App.firebase.currentUser.uid).get()
+                        .then(doc => {
+                            if (doc.exists) {
+                                const settings = doc.data();
+                                App.firebase.syncEnabled = settings.syncEnabled !== false;
+                            }
+                            if (App.firebase.syncEnabled) {
+                                App.firebase.loadFromFirebase();
+                            }
+                        }).catch(error => {
+                            console.error('Error checking sync settings:', error);
+                            App.firebase.syncEnabled = false;
+                        });
                 } else {
                     App.firebase.syncEnabled = false;
                 }
@@ -7836,9 +7879,10 @@
 
                 document.querySelector('.header').addEventListener('click', function (e) {
                     const isMobileOrTablet = window.innerWidth <= 1200;
+                    const isCalendarPage = document.body.classList.contains('calendar-page-active');
 
-                    // Проверяем клик в области гамбургера (левая верхняя часть header)
-                    if (isMobileOrTablet && e.clientX < 50 && e.clientY < 70) {
+                    // Гамбургер работает только на странице календаря
+                    if (isMobileOrTablet && isCalendarPage && e.clientX < 50 && e.clientY < 70) {
                         const sidebar = document.getElementById('sidebar');
                         const overlay = App.events.createSidebarOverlay();
 
@@ -7848,9 +7892,11 @@
                 });
 
                 document.querySelectorAll('.menu-item').forEach(item => {
-                    const originalHandler = item.onclick;
                     item.addEventListener('click', function () {
-                        if (window.innerWidth <= 1200) {
+                        const isMobileOrTablet = window.innerWidth <= 1200;
+                        const isCalendarPage = document.body.classList.contains('calendar-page-active');
+
+                        if (isMobileOrTablet && isCalendarPage) {
                             const sidebar = document.getElementById('sidebar');
                             const overlay = document.querySelector('.sidebar-overlay');
                             if (sidebar && overlay) {
@@ -7916,6 +7962,7 @@
             App.pwa.init();
 
             App.state.bufferHours = parseInt(localStorage.getItem('bufferHours')) || 2;
+            document.body.classList.add('calendar-page-active');
         };
 
         // Start application
