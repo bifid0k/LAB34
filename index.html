@@ -7198,7 +7198,9 @@
                 // Слушатель для клиентов
                 const clientsUnsubscribe = db.collection('users').doc(userId).collection('clients')
                     .onSnapshot((snapshot) => {
+                        console.log('🔥 Firestore clients event:', snapshot.docChanges().length, 'changes');
                         snapshot.docChanges().forEach((change) => {
+                            console.log('Change type:', change.type, 'Client ID:', change.doc.data().id);
                             if (change.type === 'added' || change.type === 'modified') {
                                 const data = change.doc.data();
                                 const index = App.db.clients.findIndex(c => c.id === data.id);
