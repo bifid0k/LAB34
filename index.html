@@ -4586,7 +4586,8 @@
                     paidAmount: paidAmount,
                     notes: notes,
                     paymentNotes: paymentNotes,
-                    createdAt: new Date()
+                    createdAt: new Date(),
+                    lastModified: new Date()
                 };
             },
 
@@ -4745,6 +4746,7 @@
                 if (order) {
                     if (order.status === 'cancelled') {
                         order.status = 'booked';
+                        order.lastModified = new Date();
                         order.clients.forEach(client => {
                             client.equipment.forEach(eq => {
                                 const equipmentItem = App.db.equipment.find(e => e.id === eq.equipmentId);
@@ -4755,9 +4757,10 @@
                         });
                         App.utils.showNotification('Заказ восстановлен');
                         App.firebase.saveToFirebase('orders', order);
+                        App.storage.save();
                     } else {
                         order.status = 'cancelled';
-
+                        order.lastModified = new Date();
                         order.clients.forEach(client => {
                             client.equipment.forEach(eq => {
                                 const equipmentItem = App.db.equipment.find(e => e.id === eq.equipmentId);
@@ -4769,6 +4772,7 @@
 
                         App.utils.showNotification('Заказ отменён');
                         App.firebase.saveToFirebase('orders', order);
+                        App.storage.save();
                     }
 
                     App.orders.render();
@@ -4858,6 +4862,7 @@
                     App.equipment.render();
                 }
 
+                order.lastModified = new Date();
                 App.storage.save();
                 if (App.firebase.currentUser && App.firebase.syncEnabled) {
                     App.firebase.saveToFirebase('orders', order);
@@ -4926,6 +4931,9 @@
                     }
                 }
 
+                order.lastModified = new Date();
+                const equipmentItem = App.db.equipment.find(e => e.id === equipmentId);
+                equipmentItem.lastModified = new Date();
                 App.storage.save();
                 if (App.firebase.currentUser && App.firebase.syncEnabled) {
                     App.firebase.saveToFirebase('orders', order);
@@ -5313,7 +5321,8 @@
                             height: height,
                             weight: weight,
                             shoeSize: shoeSize,
-                            notes: notes
+                            notes: notes,
+                            lastModified: new Date()
                         };
                         App.utils.showNotification('Клиент обновлён');
                         if (App.firebase.currentUser && App.firebase.syncEnabled) {
@@ -5329,7 +5338,8 @@
                         weight: weight,
                         shoeSize: shoeSize,
                         notes: notes,
-                        lastEquipment: ''
+                        lastEquipment: '',
+                        lastModified: new Date()
                     };
 
                     App.db.clients.push(newClient);
@@ -5708,7 +5718,7 @@
                     }
 
                     document.getElementById('equipment-detail-title').textContent = equipmentItem.name;
-
+                    equipmentItem.lastModified = new Date();
                     App.equipment.render();
                     App.utils.showNotification('Изменения сохранены');
                     App.firebase.saveToFirebase('equipment', equipmentItem);
@@ -6097,7 +6107,8 @@
                     bindingSize: bindingSize,
                     stiffness: stiffness,
                     status: status,
-                    equipmentPrice: equipmentPrice
+                    equipmentPrice: equipmentPrice,
+                    lastModified: new Date()
                 };
 
                 if (priceCategoryId && priceCategoryId !== 'custom') {
@@ -6201,7 +6212,8 @@
                             name: name,
                             type: type,
                             additionalPrice: additionalPrice,
-                            ...(parent && { parent: parent })
+                            ...(parent && { parent: parent }),
+                            lastModified: new Date()
                         };
                         App.utils.showNotification('Категория обновлена');
                     }
@@ -6212,7 +6224,8 @@
                         name: name,
                         type: type,
                         additionalPrice: additionalPrice,
-                        ...(parent && { parent: parent })
+                        ...(parent && { parent: parent }),
+                        lastModified: new Date()
                     };
                     App.db.categories.push(newCategory);
                     App.utils.showNotification('Категория добавлена');
@@ -6411,7 +6424,8 @@
                             dailyPrice: dailyPrice,
                             nextDaysPrice: nextDaysPrice,
                             oneTimePrice: oneTimePrice,
-                            color: color
+                            color: color,
+                            lastModified: new Date()
                         };
                         App.utils.showNotification('Ценовая категория обновлена');
                         if (App.firebase.currentUser && App.firebase.syncEnabled) {
@@ -6426,7 +6440,8 @@
                         dailyPrice: dailyPrice,
                         nextDaysPrice: nextDaysPrice,
                         oneTimePrice: oneTimePrice,
-                        color: color
+                        color: color,
+                        lastModified: new Date()
                     };
                     App.db.priceCategories.push(newCategory);
                     App.utils.showNotification('Ценовая категория добавлена');
@@ -6926,6 +6941,10 @@
 
                         App.storage.save();
 
+                        if (App.firebase.currentUser && App.firebase.syncEnabled) {
+                            App.firebase.uploadInitialData();
+                        }
+
                         App.calendar.render(App.state.currentDate);
                         App.calendar.updateSelectedDatePanel(App.state.selectedDate);
                         App.orders.render();
@@ -7009,93 +7028,8 @@
                         App.data.initializePriceCategories();
                     }
 
-                    App.db.clients = [
-                        {
-                            id: 1,
-                            name: 'Иванов Иван Иванович',
-                            phone: '+7 (900) 123-45-67',
-                            height: 175,
-                            weight: 70,
-                            shoeSize: 42,
-                            notes: 'Опытный сноубордист',
-                            lastEquipment: 'Burton Custom 156'
-                        },
-                        {
-                            id: 2,
-                            name: 'Петрова Анна Сергеевна',
-                            phone: '+7 (901) 234-56-78',
-                            height: 165,
-                            weight: 55,
-                            shoeSize: 38,
-                            notes: 'Начинающая лыжница',
-                            lastEquipment: 'K2 женские лыжи 150'
-                        },
-                        {
-                            id: 3,
-                            name: 'Сидоров Петр Алексеевич',
-                            phone: '+7 (902) 345-67-89',
-                            height: 180,
-                            weight: 80,
-                            shoeSize: 44,
-                            notes: 'Продвинутый лыжник',
-                            lastEquipment: 'Rossignol Hero 170'
-                        }
-                    ];
-
-                    App.db.equipment = [
-                        {
-                            id: 1,
-                            name: 'Burton Custom 156',
-                            category: 'snowboards',
-                            length: 156,
-                            stiffness: 6,
-                            hourlyPrice: 800,
-                            dailyPrice: 1000,
-                            nextDaysPrice: 600,
-                            status: 'available'
-                        },
-                        {
-                            id: 2,
-                            name: 'Burton ботинки 42',
-                            category: 'snowboard-boots',
-                            size: 42,
-                            hourlyPrice: 400,
-                            dailyPrice: 500,
-                            nextDaysPrice: 300,
-                            status: 'available'
-                        },
-                        {
-                            id: 3,
-                            name: 'K2 женские лыжи 150',
-                            category: 'skis',
-                            length: 150,
-                            hourlyPrice: 900,
-                            dailyPrice: 1100,
-                            nextDaysPrice: 700,
-                            status: 'available'
-                        },
-                        {
-                            id: 4,
-                            name: 'Rossignol Hero 170',
-                            category: 'skis',
-                            length: 170,
-                            hourlyPrice: 900,
-                            dailyPrice: 1100,
-                            nextDaysPrice: 700,
-                            status: 'available'
-                        },
-                        {
-                            id: 5,
-                            name: 'Salomon ботинки 44',
-                            category: 'ski-boots',
-                            size: 44,
-                            hourlyPrice: 400,
-                            dailyPrice: 500,
-                            nextDaysPrice: 300,
-                            status: 'available'
-                        }
-                    ];
-
+                    App.db.clients = [];
+                    App.db.equipment = [];
                     App.db.orders = [];
 
                     App.storage.save();
@@ -7403,9 +7337,32 @@
                     clientsSnapshot.forEach(doc => {
                         firebaseClients.push(doc.data());
                     });
-                    if (firebaseClients.length > 0) {
-                        App.db.clients = firebaseClients;
-                    }
+
+                    // Merge с локальными данными
+                    firebaseClients.forEach(fbItem => {
+                        const localIndex = App.db.clients.findIndex(c => c.id === fbItem.id);
+
+                        if (localIndex === -1) {
+                            // Новый элемент из облака
+                            App.db.clients.push(fbItem);
+                        } else {
+                            const localItem = App.db.clients[localIndex];
+                            // Сравниваем lastModified
+                            if (!localItem.lastModified || (fbItem.lastModified && fbItem.lastModified.toMillis() > (localItem.lastModified.toMillis ? localItem.lastModified.toMillis() : new Date(localItem.lastModified).getTime()))) {
+                                // Облачный новее - заменяем
+                                App.db.clients[localIndex] = fbItem;
+                            }
+                            // Если локальный новее - ничего не делаем, uploadInitialData загрузит его в облако
+                        }
+                    });
+
+                    // Загружаем локальные элементы, которых нет в облаке
+                    App.db.clients.forEach(localItem => {
+                        const fbExists = firebaseClients.some(fb => fb.id === localItem.id);
+                        if (!fbExists && localItem.lastModified) {
+                            // Есть только локально - загрузим в облако позже через uploadInitialData
+                        }
+                    });
 
                     // Загружаем оборудование
                     const equipmentSnapshot = await db.collection('users').doc(userId).collection('equipment').get();
@@ -7413,9 +7370,20 @@
                     equipmentSnapshot.forEach(doc => {
                         firebaseEquipment.push(doc.data());
                     });
-                    if (firebaseEquipment.length > 0) {
-                        App.db.equipment = firebaseEquipment;
-                    }
+
+                    // Merge с локальными данными
+                    firebaseEquipment.forEach(fbItem => {
+                        const localIndex = App.db.equipment.findIndex(e => e.id === fbItem.id);
+
+                        if (localIndex === -1) {
+                            App.db.equipment.push(fbItem);
+                        } else {
+                            const localItem = App.db.equipment[localIndex];
+                            if (!localItem.lastModified || (fbItem.lastModified && fbItem.lastModified.toMillis() > (localItem.lastModified.toMillis ? localItem.lastModified.toMillis() : new Date(localItem.lastModified).getTime()))) {
+                                App.db.equipment[localIndex] = fbItem;
+                            }
+                        }
+                    });
 
                     // Загружаем заказы
                     const ordersSnapshot = await db.collection('users').doc(userId).collection('orders').get();
@@ -7428,9 +7396,20 @@
                         data.createdAt = data.createdAt.toDate();
                         firebaseOrders.push(data);
                     });
-                    if (firebaseOrders.length > 0) {
-                        App.db.orders = firebaseOrders;
-                    }
+
+                    // Merge с локальными данными
+                    firebaseOrders.forEach(fbItem => {
+                        const localIndex = App.db.orders.findIndex(o => o.id === fbItem.id);
+
+                        if (localIndex === -1) {
+                            App.db.orders.push(fbItem);
+                        } else {
+                            const localItem = App.db.orders[localIndex];
+                            if (!localItem.lastModified || (fbItem.lastModified && fbItem.lastModified.toMillis() > (localItem.lastModified.toMillis ? localItem.lastModified.toMillis() : new Date(localItem.lastModified).getTime()))) {
+                                App.db.orders[localIndex] = fbItem;
+                            }
+                        }
+                    });
 
                     // Загружаем ценовые категории
                     const priceCategoriesSnapshot = await db.collection('users').doc(userId).collection('priceCategories').get();
@@ -7438,9 +7417,20 @@
                     priceCategoriesSnapshot.forEach(doc => {
                         firebasePriceCategories.push(doc.data());
                     });
-                    if (firebasePriceCategories.length > 0) {
-                        App.db.priceCategories = firebasePriceCategories;
-                    }
+
+                    // Merge с локальными данными
+                    firebasePriceCategories.forEach(fbItem => {
+                        const localIndex = App.db.priceCategories.findIndex(pc => pc.id === fbItem.id);
+
+                        if (localIndex === -1) {
+                            App.db.priceCategories.push(fbItem);
+                        } else {
+                            const localItem = App.db.priceCategories[localIndex];
+                            if (!localItem.lastModified || (fbItem.lastModified && fbItem.lastModified.toMillis() > (localItem.lastModified.toMillis ? localItem.lastModified.toMillis() : new Date(localItem.lastModified).getTime()))) {
+                                App.db.priceCategories[localIndex] = fbItem;
+                            }
+                        }
+                    });
 
                     App.utils.showNotification('Данные загружены из облака');
 
@@ -7467,56 +7457,55 @@
                 const db = App.firebase.db;
 
                 try {
-                    // Проверяем, есть ли уже данные в Firebase
-                    const settingsDoc = await db.collection('users').doc(userId).get();
-                    if (!settingsDoc.exists) {
-                        // Загружаем все локальные данные в Firebase
-                        App.utils.showNotification('Первичная синхронизация...');
+                    // Всегда синхронизируем локальные данные с облаком
+                    App.utils.showNotification('Синхронизация локальных данных...');
 
-                        // Настройки
-                        batch.set(db.collection('users').doc(userId), {
-                            categories: App.db.categories,
-                            orderCounter: App.state.orderCounter,
-                            orderDrafts: App.db.orderDrafts,
-                            lastSync: firebase.firestore.FieldValue.serverTimestamp()
-                        });
+                    // Настройки
+                    batch.set(db.collection('users').doc(userId), {
+                        categories: App.db.categories,
+                        orderCounter: App.state.orderCounter,
+                        orderDrafts: App.db.orderDrafts,
+                        lastSync: firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true }); // ВАЖНО: merge вместо перезаписи
 
-                        // Клиенты
-                        App.db.clients.forEach(client => {
-                            const clientRef = db.collection('users').doc(userId).collection('clients').doc(String(client.id));
-                            batch.set(clientRef, {
-                                ...client,
-                                lastModified: firebase.firestore.FieldValue.serverTimestamp()
-                            });
-                        });
+                    // Клиенты
+                    App.db.clients.forEach(client => {
+                        const clientRef = db.collection('users').doc(userId).collection('clients').doc(String(client.id));
+                        batch.set(clientRef, {
+                            ...client,
+                            lastModified: client.lastModified || firebase.firestore.FieldValue.serverTimestamp()
+                        }, { merge: true });
+                    });
 
-                        // Оборудование
-                        App.db.equipment.forEach(item => {
-                            const equipmentRef = db.collection('users').doc(userId).collection('equipment').doc(String(item.id));
-                            batch.set(equipmentRef, {
-                                ...item,
-                                lastModified: firebase.firestore.FieldValue.serverTimestamp()
-                            });
-                        });
+                    // Оборудование
+                    App.db.equipment.forEach(item => {
+                        const equipmentRef = db.collection('users').doc(userId).collection('equipment').doc(String(item.id));
+                        batch.set(equipmentRef, {
+                            ...item,
+                            lastModified: item.lastModified || firebase.firestore.FieldValue.serverTimestamp()
+                        }, { merge: true });
+                    });
 
-                        // Заказы
-                        App.db.orders.forEach(order => {
-                            const orderRef = db.collection('users').doc(userId).collection('orders').doc(String(order.id));
-                            batch.set(orderRef, {
-                                ...order,
-                                lastModified: firebase.firestore.FieldValue.serverTimestamp()
-                            });
-                        });
+                    // Заказы
+                    App.db.orders.forEach(order => {
+                        const orderRef = db.collection('users').doc(userId).collection('orders').doc(String(order.id));
+                        batch.set(orderRef, {
+                            ...order,
+                            lastModified: order.lastModified || firebase.firestore.FieldValue.serverTimestamp()
+                        }, { merge: true });
+                    });
 
-                        // Ценовые категории
-                        App.db.priceCategories.forEach(category => {
-                            const categoryRef = db.collection('users').doc(userId).collection('priceCategories').doc(String(category.id));
-                            batch.set(categoryRef, category);
-                        });
+                    // Ценовые категории
+                    App.db.priceCategories.forEach(category => {
+                        const categoryRef = db.collection('users').doc(userId).collection('priceCategories').doc(String(category.id));
+                        batch.set(categoryRef, {
+                            ...category,
+                            lastModified: category.lastModified || firebase.firestore.FieldValue.serverTimestamp()
+                        }, { merge: true });
+                    });
 
-                        await batch.commit();
-                        App.utils.showNotification('Данные успешно синхронизированы');
-                    }
+                    await batch.commit();
+                    App.utils.showNotification('Данные успешно синхронизированы');
                 } catch (error) {
                     console.error('Ошибка первичной синхронизации:', error);
                     App.utils.showNotification('Ошибка синхронизации');
