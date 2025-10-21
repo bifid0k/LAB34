@@ -7190,11 +7190,15 @@
             },
 
             setupRealtimeListeners() {
+                console.log('🔧 setupRealtimeListeners called');
+                console.log('Current user:', App.firebase.currentUser);
+                console.log('User ID:', App.firebase.currentUser?.uid);
                 if (!App.firebase.currentUser) return;
 
                 const userId = App.firebase.currentUser.uid;
                 const db = App.firebase.db;
 
+                console.log('✅ Starting listeners setup for user:', userId);
                 // Слушатель для клиентов
                 const clientsUnsubscribe = db.collection('users').doc(userId).collection('clients')
                     .onSnapshot((snapshot) => {
@@ -7327,6 +7331,7 @@
                         }
                     });
                 App.firebase.unsubscribers.push(settingsUnsubscribe);
+                console.log('✅ All listeners created, unsubscribers count:', App.firebase.unsubscribers.length);
             },
 
             async loadFromFirebase() {
