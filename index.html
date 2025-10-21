@@ -7084,19 +7084,7 @@
 
             checkSyncEnabled() {
                 if (App.firebase.currentUser) {
-                    App.firebase.db.collection('users').doc(App.firebase.currentUser.uid).get()
-                        .then(doc => {
-                            if (doc.exists) {
-                                const settings = doc.data();
-                                App.firebase.syncEnabled = settings.syncEnabled !== false;
-                            }
-                            if (App.firebase.syncEnabled) {
-                                App.firebase.loadFromFirebase();
-                            }
-                        }).catch(error => {
-                            console.error('Error checking sync settings:', error);
-                            App.firebase.syncEnabled = false;
-                        });
+                    App.firebase.enableSync();
                 } else {
                     App.firebase.syncEnabled = false;
                 }
@@ -7210,7 +7198,7 @@
                                 const index = App.db.clients.findIndex(c => c.id === data.id);
                                 if (index !== -1) {
                                     if (!App.db.clients[index].lastModified ||
-                                        (data.lastModified && data.lastModified.toMillis() >
+                                        (data.lastModified && data.lastModified.toMillis && data.lastModified.toMillis() >
                                             (App.db.clients[index].lastModified.toMillis ?
                                                 App.db.clients[index].lastModified.toMillis() :
                                                 new Date(App.db.clients[index].lastModified).getTime()))) {
@@ -7239,7 +7227,7 @@
                                 const index = App.db.equipment.findIndex(e => e.id === data.id);
                                 if (index !== -1) {
                                     if (!App.db.equipment[index].lastModified ||
-                                        (data.lastModified && data.lastModified.toMillis() >
+                                        (data.lastModified && data.lastModified.toMillis && data.lastModified.toMillis() >
                                             (App.db.equipment[index].lastModified.toMillis ?
                                                 App.db.equipment[index].lastModified.toMillis() :
                                                 new Date(App.db.equipment[index].lastModified).getTime()))) {
@@ -7273,7 +7261,7 @@
                                 const index = App.db.orders.findIndex(o => o.id === data.id);
                                 if (index !== -1) {
                                     if (!App.db.orders[index].lastModified ||
-                                        (data.lastModified && data.lastModified.toMillis() >
+                                        (data.lastModified && data.lastModified.toMillis && data.lastModified.toMillis() >
                                             (App.db.orders[index].lastModified.toMillis ?
                                                 App.db.orders[index].lastModified.toMillis() :
                                                 new Date(App.db.orders[index].lastModified).getTime()))) {
