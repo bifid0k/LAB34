@@ -7248,7 +7248,9 @@
             disableSync() {
                 App.firebase.syncEnabled = false;
 
-                App.firebase.unsubscribers.forEach(unsubscribe => unsubscribe());
+                if (App.firebase.unsubscribers && App.firebase.unsubscribers.length > 0) {
+                    App.firebase.unsubscribers.forEach(unsubscribe => unsubscribe());
+                }
                 App.firebase.unsubscribers = [];
             },
 
@@ -7264,14 +7266,13 @@
                         snapshot.docChanges().forEach((change) => {
                             if (change.type === 'added' || change.type === 'modified') {
                                 const data = change.doc.data();
-                                const index = clients.findIndex(c => c.id === data.id);
+                                const index = App.db.clients.findIndex(c => c.id === data.id);
                                 if (index !== -1) {
-                                    // Обновляем только если данные новее
-                                    if (!clients[index].lastModified || data.lastModified > clients[index].lastModified) {
-                                        clients[index] = data;
+                                    if (!App.db.clients[index].lastModified || data.lastModified > App.db.clients[index].lastModified) {
+                                        App.db.clients[index] = data;
                                     }
                                 } else {
-                                    clients.push(data);
+                                    App.db.clients.push(data);
                                 }
                             }
                             if (change.type === 'removed') {
@@ -7282,7 +7283,7 @@
                         App.clients.render();
                         App.storage.save();
                     });
-                unsubscribers.push(clientsUnsubscribe);
+                App.firebase.unsubscribers.push(clientsUnsubscribe);
 
                 // Слушатель для оборудования
                 const equipmentUnsubscribe = db.collection('users').doc(userId).collection('equipment')
@@ -7290,24 +7291,24 @@
                         snapshot.docChanges().forEach((change) => {
                             if (change.type === 'added' || change.type === 'modified') {
                                 const data = change.doc.data();
-                                const index = equipment.findIndex(e => e.id === data.id);
+                                const index = App.db.equipment.findIndex(e => e.id === data.id);
                                 if (index !== -1) {
-                                    if (!equipment[index].lastModified || data.lastModified > equipment[index].lastModified) {
-                                        equipment[index] = data;
+                                    if (!App.db.equipment[index].lastModified || data.lastModified > App.db.equipment[index].lastModified) {
+                                        App.db.equipment[index] = data;
                                     }
                                 } else {
-                                    equipment.push(data);
+                                    App.db.equipment.push(data);
                                 }
                             }
                             if (change.type === 'removed') {
                                 const data = change.doc.data();
-                                equipment = equipment.filter(e => e.id !== data.id);
+                                App.db.equipment = App.db.equipment.filter(e => e.id !== data.id);
                             }
                         });
                         App.equipment.render();
                         App.storage.save();
                     });
-                unsubscribers.push(equipmentUnsubscribe);
+                App.firebase.unsubscribers.push(equipmentUnsubscribe);
 
                 // Слушатель для заказов
                 const ordersUnsubscribe = db.collection('users').doc(userId).collection('orders')
@@ -7320,18 +7321,18 @@
                                 data.endDate = data.endDate.toDate();
                                 data.createdAt = data.createdAt.toDate();
 
-                                const index = orders.findIndex(o => o.id === data.id);
+                                const index = App.db.orders.findIndex(o => o.id === data.id);
                                 if (index !== -1) {
-                                    if (!orders[index].lastModified || data.lastModified > orders[index].lastModified) {
-                                        orders[index] = data;
+                                    if (!App.db.orders[index].lastModified || data.lastModified > App.db.orders[index].lastModified) {
+                                        App.db.orders[index] = data;
                                     }
                                 } else {
-                                    orders.push(data);
+                                    App.db.orders.push(data);
                                 }
                             }
                             if (change.type === 'removed') {
                                 const data = change.doc.data();
-                                orders = orders.filter(o => o.id !== data.id);
+                                App.db.orders = App.db.orders.filter(o => o.id !== data.id);
                             }
                         });
                         App.oreders.render();
@@ -7339,7 +7340,7 @@
                         App.calendar.updateSelectedDatePanel(App.state.selectedDate);
                         App.storage.save();
                     });
-                unsubscribers.push(ordersUnsubscribe);
+                App.firebase.unsubscribers.push(ordersUnsubscribe);
 
                 // Слушатель для ценовых категорий
                 const priceCategoriesUnsubscribe = db.collection('users').doc(userId).collection('priceCategories')
@@ -7347,22 +7348,22 @@
                         snapshot.docChanges().forEach((change) => {
                             if (change.type === 'added' || change.type === 'modified') {
                                 const data = change.doc.data();
-                                const index = priceCategories.findIndex(pc => pc.id === data.id);
+                                const index = App.db.priceCategories.findIndex(pc => pc.id === data.id);
                                 if (index !== -1) {
-                                    priceCategories[index] = data;
+                                    App.db.priceCategories[index] = data;
                                 } else {
-                                    priceCategories.push(data);
+                                    App.db.priceCategories.push(data);
                                 }
                             }
                             if (change.type === 'removed') {
                                 const data = change.doc.data();
-                                priceCategories = priceCategories.filter(pc => pc.id !== data.id);
+                                App.db.priceCategories = App.db.priceCategories.filter(pc => pc.id !== data.id);
                             }
                         });
                         App.priceCategories.render();
                         App.storage.save();
                     });
-                unsubscribers.push(priceCategoriesUnsubscribe);
+                App.firebase.unsubscribers.push(priceCategoriesUnsubscribe);
 
                 // Слушатель для настроек (categories, orderCounter)
                 const settingsUnsubscribe = db.collection('users').doc(userId)
@@ -7376,7 +7377,7 @@
                             App.storage.save();
                         }
                     });
-                unsubscribers.push(settingsUnsubscribe);
+                App.firebase.unsubscribers.push(settingsUnsubscribe);
             },
 
             async loadFromFirebase() {
