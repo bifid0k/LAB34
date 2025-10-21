@@ -7335,7 +7335,7 @@
                                 App.db.orders = App.db.orders.filter(o => o.id !== data.id);
                             }
                         });
-                        App.oreders.render();
+                        App.orders.render();
                         App.calendar.render(App.state.currentDate);
                         App.calendar.updateSelectedDatePanel(App.state.selectedDate);
                         App.storage.save();
