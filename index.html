@@ -7183,6 +7183,10 @@
                 console.log('User ID:', App.firebase.currentUser?.uid);
                 if (!App.firebase.currentUser) return;
 
+                if (!App.firebase.unsubscribers) {
+                    App.firebase.unsubscribers = [];
+                }
+
                 const userId = App.firebase.currentUser.uid;
                 const db = App.firebase.db;
 
@@ -7213,8 +7217,10 @@
                                 App.db.clients = App.db.clients.filter(c => c.id !== data.id);
                             }
                         });
-                        App.clients.render();
+                        
                         App.storage.save();
+                        console.log('Rendering clients');
+                        App.clients.render();
                     });
                 App.firebase.unsubscribers.push(clientsUnsubscribe);
 
@@ -7356,7 +7362,7 @@
                         } else {
                             const localItem = App.db.clients[localIndex];
                             // Сравниваем lastModified
-                            if (!localItem.lastModified || (fbItem.lastModified && fbItem.lastModified.toMillis() > (localItem.lastModified.toMillis ? localItem.lastModified.toMillis() : new Date(localItem.lastModified).getTime()))) {
+                            if (!localItem.lastModified || (fbItem.lastModified && fbItem.lastModified.toMillis && fbItem.lastModified.toMillis() > (localItem.lastModified.toMillis ? localItem.lastModified.toMillis() : new Date(localItem.lastModified).getTime()))) {
                                 // Облачный новее - заменяем
                                 App.db.clients[localIndex] = fbItem;
                             }
@@ -7387,7 +7393,7 @@
                             App.db.equipment.push(fbItem);
                         } else {
                             const localItem = App.db.equipment[localIndex];
-                            if (!localItem.lastModified || (fbItem.lastModified && fbItem.lastModified.toMillis() > (localItem.lastModified.toMillis ? localItem.lastModified.toMillis() : new Date(localItem.lastModified).getTime()))) {
+                            if (!localItem.lastModified || (fbItem.lastModified && fbItem.lastModified.toMillis && fbItem.lastModified.toMillis() > (localItem.lastModified.toMillis ? localItem.lastModified.toMillis() : new Date(localItem.lastModified).getTime()))) {
                                 App.db.equipment[localIndex] = fbItem;
                             }
                         }
@@ -7413,7 +7419,7 @@
                             App.db.orders.push(fbItem);
                         } else {
                             const localItem = App.db.orders[localIndex];
-                            if (!localItem.lastModified || (fbItem.lastModified && fbItem.lastModified.toMillis() > (localItem.lastModified.toMillis ? localItem.lastModified.toMillis() : new Date(localItem.lastModified).getTime()))) {
+                            if (!localItem.lastModified || (fbItem.lastModified && fbItem.lastModified.toMillis && fbItem.lastModified.toMillis() > (localItem.lastModified.toMillis ? localItem.lastModified.toMillis() : new Date(localItem.lastModified).getTime()))) {
                                 App.db.orders[localIndex] = fbItem;
                             }
                         }
@@ -7434,7 +7440,7 @@
                             App.db.priceCategories.push(fbItem);
                         } else {
                             const localItem = App.db.priceCategories[localIndex];
-                            if (!localItem.lastModified || (fbItem.lastModified && fbItem.lastModified.toMillis() > (localItem.lastModified.toMillis ? localItem.lastModified.toMillis() : new Date(localItem.lastModified).getTime()))) {
+                            if (!localItem.lastModified || (fbItem.lastModified && fbItem.lastModified.toMillis && fbItem.lastModified.toMillis() > (localItem.lastModified.toMillis ? localItem.lastModified.toMillis() : new Date(localItem.lastModified).getTime()))) {
                                 App.db.priceCategories[localIndex] = fbItem;
                             }
                         }
