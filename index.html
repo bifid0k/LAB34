@@ -7202,7 +7202,11 @@
                                 const data = change.doc.data();
                                 const index = App.db.clients.findIndex(c => c.id === data.id);
                                 if (index !== -1) {
-                                    if (!App.db.clients[index].lastModified || data.lastModified > App.db.clients[index].lastModified) {
+                                    if (!App.db.clients[index].lastModified ||
+                                        (data.lastModified && data.lastModified.toMillis() >
+                                            (App.db.clients[index].lastModified.toMillis ?
+                                                App.db.clients[index].lastModified.toMillis() :
+                                                new Date(App.db.clients[index].lastModified).getTime()))) {
                                         App.db.clients[index] = data;
                                     }
                                 } else {
@@ -7227,7 +7231,11 @@
                                 const data = change.doc.data();
                                 const index = App.db.equipment.findIndex(e => e.id === data.id);
                                 if (index !== -1) {
-                                    if (!App.db.equipment[index].lastModified || data.lastModified > App.db.equipment[index].lastModified) {
+                                    if (!App.db.equipment[index].lastModified ||
+                                        (data.lastModified && data.lastModified.toMillis() >
+                                            (App.db.equipment[index].lastModified.toMillis ?
+                                                App.db.equipment[index].lastModified.toMillis() :
+                                                new Date(App.db.equipment[index].lastModified).getTime()))) {
                                         App.db.equipment[index] = data;
                                     }
                                 } else {
@@ -7257,7 +7265,11 @@
 
                                 const index = App.db.orders.findIndex(o => o.id === data.id);
                                 if (index !== -1) {
-                                    if (!App.db.orders[index].lastModified || data.lastModified > App.db.orders[index].lastModified) {
+                                    if (!App.db.orders[index].lastModified ||
+                                        (data.lastModified && data.lastModified.toMillis() >
+                                            (App.db.orders[index].lastModified.toMillis ?
+                                                App.db.orders[index].lastModified.toMillis() :
+                                                new Date(App.db.orders[index].lastModified).getTime()))) {
                                         App.db.orders[index] = data;
                                     }
                                 } else {
