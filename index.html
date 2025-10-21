@@ -7174,8 +7174,9 @@
                 App.firebase.syncEnabled = true;
 
                 App.firebase.loadFromFirebase().then(() => {
-                    App.firebase.setupRealtimeListeners();
-                    App.firebase.uploadInitialData();
+                    App.firebase.uploadInitialData().then(() => {
+                        App.firebase.setupRealtimeListeners();
+                    });
                 });
             },
 
