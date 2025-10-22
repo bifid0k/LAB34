@@ -7200,15 +7200,27 @@
                             if (change.type === 'added' || change.type === 'modified') {
                                 const data = change.doc.data();
                                 const index = App.db.clients.findIndex(c => c.id === data.id);
+
                                 if (index !== -1) {
-                                    if (!App.db.clients[index].lastModified ||
-                                        (data.lastModified && data.lastModified.toMillis && data.lastModified.toMillis() >
-                                            (App.db.clients[index].lastModified.toMillis ?
-                                                App.db.clients[index].lastModified.toMillis() :
-                                                new Date(App.db.clients[index].lastModified).getTime()))) {
+                                    const localTime = App.db.clients[index].lastModified.toMillis ?
+                                        App.db.clients[index].lastModified.toMillis() :
+                                        new Date(App.db.clients[index].lastModified).getTime();
+                                    const cloudTime = data.lastModified ? data.lastModified.toMillis() : 0;
+
+                                    console.log('Comparing times for client', data.id, {
+                                        local: new Date(localTime),
+                                        cloud: new Date(cloudTime),
+                                        cloudNewer: cloudTime > localTime
+                                    });
+
+                                    if (!App.db.clients[index].lastModified || cloudTime > localTime) {
+                                        console.log('✅ Updating client', data.id);
                                         App.db.clients[index] = data;
+                                    } else {
+                                        console.log('❌ Skipping client', data.id, '- local is newer');
                                     }
                                 } else {
+                                    console.log('➕ Adding new client', data.id);
                                     App.db.clients.push(data);
                                 }
                             }
@@ -7217,7 +7229,7 @@
                                 App.db.clients = App.db.clients.filter(c => c.id !== data.id);
                             }
                         });
-                        
+
                         App.storage.save();
                         console.log('Rendering clients');
                         App.clients.render();
