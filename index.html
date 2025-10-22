@@ -7214,7 +7214,9 @@
                                         cloud: new Date(cloudTime),
                                         cloudNewer: cloudTime > localTime,
                                         localType: typeof App.db.clients[index].lastModified,
-                                        cloudType: typeof data.lastModified
+                                        cloudType: typeof data.lastModified,
+                                        localRaw: App.db.clients[index].lastModified,
+                                        cloudRaw: data.lastModified
                                     });
 
                                     if (!App.db.clients[index].lastModified || cloudTime > localTime) {
