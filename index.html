@@ -7202,15 +7202,19 @@
                                 const index = App.db.clients.findIndex(c => c.id === data.id);
 
                                 if (index !== -1) {
-                                    const localTime = App.db.clients[index].lastModified.toMillis ?
+                                    const localTime = App.db.clients[index].lastModified?.toMillis ?
                                         App.db.clients[index].lastModified.toMillis() :
                                         new Date(App.db.clients[index].lastModified).getTime();
-                                    const cloudTime = data.lastModified ? data.lastModified.toMillis() : 0;
+                                    const cloudTime = data.lastModified?.toMillis ?
+                                        data.lastModified.toMillis() :
+                                        new Date(data.lastModified || 0).getTime();
 
                                     console.log('Comparing times for client', data.id, {
                                         local: new Date(localTime),
                                         cloud: new Date(cloudTime),
-                                        cloudNewer: cloudTime > localTime
+                                        cloudNewer: cloudTime > localTime,
+                                        localType: typeof App.db.clients[index].lastModified,
+                                        cloudType: typeof data.lastModified
                                     });
 
                                     if (!App.db.clients[index].lastModified || cloudTime > localTime) {
