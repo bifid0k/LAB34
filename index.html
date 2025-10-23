@@ -1500,7 +1500,33 @@
             }
         }
 
-        @media (orientation: portrait) {
+        /* Для устройств меньше 768px оставить как есть, но добавить несколько правок */
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed;
+                left: -260px;
+                z-index: 999;
+                height: 100vh;
+            }
+
+            .sidebar.open {
+                left: 0;
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
+
+            .header {
+                padding-left: 56px;
+                height: 48px;
+                padding-top: 8px;
+                padding-bottom: 8px;
+            }
+
+            .header h2 {
+                font-size: 16px;
+            }
 
             .header::before {
                 content: '☰';
@@ -1513,35 +1539,65 @@
                 z-index: 10;
             }
 
-            /* Скрываем сайдбар по умолчанию */
-            .sidebar {
-                transform: translateX(-100%);
-            }
-
-            .sidebar.open {
-                transform: translateX(0);
-            }
-
-            /* Оверлей */
-            .sidebar-overlay {
-                display: none;
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: rgba(0, 0, 0, 0.5);
-                z-index: 999;
-            }
-
-            .sidebar-overlay.show {
-                display: block;
-            }
-
-            /* Today panel скрыт */
             .today-panel {
-                width: 200px;
-                padding: 10px;
+                display: none;
+            }
+
+            .calendar-main {
+                flex: 1;
+                padding: 12px;
+            }
+
+            .list-container {
+                padding: 12px;
+            }
+
+            .calendar-day {
+                min-height: 80px;
+                font-size: 10px;
+            }
+
+            .equipment-tabs {
+                overflow-x: auto;
+                flex-wrap: nowrap;
+                padding-bottom: 8px;
+            }
+
+            .equipment-tab {
+                white-space: nowrap;
+                font-size: 12px;
+                padding: 6px 12px;
+            }
+
+            .equipment-item input[type="checkbox"] {
+                width: 32px;
+                height: 32px;
+            }
+
+            .client-item {
+                flex-direction: column;
+            }
+
+            .client-main {
+                width: 100%;
+                border-radius: 10px 10px 0 0;
+            }
+
+            .client-last-order {
+                width: 100%;
+                border-radius: 0 0 10px 10px;
+                border-left: none;
+                border-top: 1px solid #e9ecef;
+            }
+
+            .btn {
+                padding: 7px 12px;
+                font-size: 12px;
+            }
+
+            select[data-category="main-type"] {
+                padding: 10px 12px;
+                font-size: 13px;
             }
         }
     </style>
