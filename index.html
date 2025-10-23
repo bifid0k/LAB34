@@ -1500,33 +1500,7 @@
             }
         }
 
-        /* Для устройств меньше 768px оставить как есть, но добавить несколько правок */
-        @media (max-width: 768px) {
-            .sidebar {
-                position: fixed;
-                left: -260px;
-                z-index: 999;
-                height: 100vh;
-            }
-
-            .sidebar.open {
-                left: 0;
-            }
-
-            .main-content {
-                margin-left: 0;
-            }
-
-            .header {
-                padding-left: 56px;
-                height: 48px;
-                padding-top: 8px;
-                padding-bottom: 8px;
-            }
-
-            .header h2 {
-                font-size: 16px;
-            }
+        @media (orientation: portrait) {
 
             .header::before {
                 content: '☰';
@@ -1539,65 +1513,35 @@
                 z-index: 10;
             }
 
-            .today-panel {
+            /* Скрываем сайдбар по умолчанию */
+            .sidebar {
+                transform: translateX(-100%);
+            }
+
+            .sidebar.open {
+                transform: translateX(0);
+            }
+
+            /* Оверлей */
+            .sidebar-overlay {
                 display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.5);
+                z-index: 999;
             }
 
-            .calendar-main {
-                flex: 1;
-                padding: 12px;
+            .sidebar-overlay.show {
+                display: block;
             }
 
-            .list-container {
-                padding: 12px;
-            }
-
-            .calendar-day {
-                min-height: 80px;
-                font-size: 10px;
-            }
-
-            .equipment-tabs {
-                overflow-x: auto;
-                flex-wrap: nowrap;
-                padding-bottom: 8px;
-            }
-
-            .equipment-tab {
-                white-space: nowrap;
-                font-size: 12px;
-                padding: 6px 12px;
-            }
-
-            .equipment-item input[type="checkbox"] {
-                width: 32px;
-                height: 32px;
-            }
-
-            .client-item {
-                flex-direction: column;
-            }
-
-            .client-main {
-                width: 100%;
-                border-radius: 10px 10px 0 0;
-            }
-
-            .client-last-order {
-                width: 100%;
-                border-radius: 0 0 10px 10px;
-                border-left: none;
-                border-top: 1px solid #e9ecef;
-            }
-
-            .btn {
-                padding: 7px 12px;
-                font-size: 12px;
-            }
-
-            select[data-category="main-type"] {
-                padding: 10px 12px;
-                font-size: 13px;
+            /* Today panel скрыт */
+            .today-panel {
+                width: 200px;
+                padding: 10px;
             }
         }
     </style>
@@ -2036,17 +1980,44 @@
                                     доступны при следующем запуске
                                 </p>
                             </div>
-                            <div class="settings-section">
-                                <h3 style="margin-bottom: 16px;">Очистка данных</h3>
-                                <button onclick="App.pwa.clearCache()" class="btn"
-                                    style="background: #dc3545; color: white; width: 100%;">
+
+                            <div
+                                style="background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+                                <h4 style="font-size: 18px; margin-bottom: 20px; color: #1a1a1a;">
                                     <span class="material-icons"
-                                        style="vertical-align: middle; margin-right: 8px;">delete_sweep</span>
-                                    Очистить кэш
-                                </button>
-                                <p style="margin-top: 8px; font-size: 13px; color: #6c757d;">
-                                    Удалит кэш Service Worker и все сохранённые данные
-                                </p>
+                                        style="vertical-align: middle; margin-right: 8px; color: #5e72e4;">cloud_download</span>
+                                    PWA и кэширование
+                                </h4>
+
+                                <div style="display: grid; gap: 16px;">
+                                    <!-- Очистка кэша -->
+                                    <div
+                                        style="padding: 16px; background: #fff5f5; border: 1px solid #fee2e2; border-radius: 8px;">
+                                        <h5 style="font-size: 14px; margin-bottom: 8px; color: #dc2626;">Очистка кэша
+                                        </h5>
+                                        <p style="font-size: 13px; color: #6c757d; margin-bottom: 12px;">
+                                            Удалит кэш Service Worker и все сохранённые данные
+                                        </p>
+                                        <button onclick="App.pwa.clearCache()" class="btn"
+                                            style="background: #dc3545; color: white;">
+                                            <span class="material-icons">delete_sweep</span>
+                                            Очистить кэш
+                                        </button>
+                                    </div>
+
+                                    <!-- Установка приложения -->
+                                    <div id="pwa-install-section"
+                                        style="padding: 16px; background: #e7f5ff; border-radius: 8px; display: none;">
+                                        <h5 style="font-size: 14px; margin-bottom: 8px;">Установка приложения</h5>
+                                        <p style="font-size: 13px; color: #6c757d; margin-bottom: 12px;">
+                                            Установите приложение на домашний экран для быстрого доступа
+                                        </p>
+                                        <button id="install-app-btn" class="btn btn-success">
+                                            <span class="material-icons">get_app</span>
+                                            Установить приложение
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -2492,7 +2463,8 @@
                 db: null,
                 currentUser: null,
                 unsubscribers: [],
-                syncEnabled: false
+                syncEnabled: false,
+                initialLoadComplete: false
             },
 
             // Data
@@ -2658,34 +2630,27 @@
             },
 
             showInstallButton() {
-                // Добавляем кнопку установки в настройки
-                const settingsPage = document.getElementById('settings-page');
-                if (!settingsPage) return;
+                const installSection = document.getElementById('pwa-install-section');
+                const installBtn = document.getElementById('install-app-btn');
 
-                const existingButton = document.getElementById('install-app-btn');
-                if (existingButton) return; // Кнопка уже есть
+                if (!installSection || !installBtn) return;
 
-                const installSection = document.createElement('div');
-                installSection.className = 'settings-section';
-                installSection.innerHTML = `
-            <h3 style="margin-bottom: 16px;">Установка приложения</h3>
-            <button id="install-app-btn" class="btn btn-primary" style="width: 100%;">
-                <span class="material-icons" style="vertical-align: middle; margin-right: 8px;">get_app</span>
-                Установить приложение
-            </button>
-            <p style="margin-top: 8px; font-size: 13px; color: #6c757d;">
-                Установите приложение для быстрого доступа и работы офлайн
-            </p>
-        `;
+                // Показываем секцию
+                installSection.style.display = 'block';
 
-                const container = settingsPage.querySelector('.list-container');
-                if (container) {
-                    container.appendChild(installSection);
+                // Добавляем обработчик
+                installBtn.addEventListener('click', () => {
+                    if (!App.pwa.deferredPrompt) return;
 
-                    document.getElementById('install-app-btn').addEventListener('click', () => {
-                        App.pwa.installApp();
+                    App.pwa.deferredPrompt.prompt();
+                    App.pwa.deferredPrompt.userChoice.then((choiceResult) => {
+                        if (choiceResult.outcome === 'accepted') {
+                            console.log('Пользователь принял установку');
+                        }
+                        App.pwa.deferredPrompt = null;
+                        installSection.style.display = 'none';
                     });
-                }
+                });
             },
 
             clearCache() {
@@ -7062,6 +7027,15 @@
                     App.firebase.db = firebase.firestore();
                     App.firebase.auth = firebase.auth();
 
+                    App.firebase.db.enablePersistence({ synchronizeTabs: true })
+                        .catch((err) => {
+                            if (err.code === 'failed-precondition') {
+                                console.log('Persistence failed: Multiple tabs open');
+                            } else if (err.code === 'unimplemented') {
+                                console.log('Persistence not supported');
+                            }
+                        });
+
                     // Проверяем авторизацию
                     App.firebase.auth.onAuthStateChanged(user => {
                         if (user) {
@@ -7160,16 +7134,22 @@
                 if (!App.firebase.currentUser || App.firebase.syncEnabled) return;
 
                 App.firebase.syncEnabled = true;
+                App.firebase.initialLoadComplete = false;  // Сброс флага
 
                 App.firebase.loadFromFirebase().then(() => {
-                    App.firebase.uploadInitialData().then(() => {
+                    return App.firebase.uploadInitialData();
+                }).then(() => {
+                    // Задержка перед подпиской, чтобы данные успели синхронизироваться
+                    setTimeout(() => {
+                        App.firebase.initialLoadComplete = true;
                         App.firebase.setupRealtimeListeners();
-                    });
+                    }, 1000);
                 });
             },
 
             disableSync() {
                 App.firebase.syncEnabled = false;
+                App.firebase.initialLoadComplete = false;  // ДОБАВИТЬ
 
                 if (App.firebase.unsubscribers && App.firebase.unsubscribers.length > 0) {
                     App.firebase.unsubscribers.forEach(unsubscribe => unsubscribe());
@@ -7178,56 +7158,41 @@
             },
 
             setupRealtimeListeners() {
-                console.log('🔧 setupRealtimeListeners called');
-                console.log('Current user:', App.firebase.currentUser);
-                console.log('User ID:', App.firebase.currentUser?.uid);
                 if (!App.firebase.currentUser) return;
 
                 if (!App.firebase.unsubscribers) {
                     App.firebase.unsubscribers = [];
                 }
 
+                const getTime = (obj) => {
+                    if (!obj) return 0;
+                    if (obj.toMillis) return obj.toMillis();
+                    if (obj.seconds) return obj.seconds * 1000;
+                    if (obj instanceof Date) return obj.getTime();
+                    return new Date(obj).getTime();
+                };
+
                 const userId = App.firebase.currentUser.uid;
                 const db = App.firebase.db;
 
-                console.log('✅ Starting listeners setup for user:', userId);
                 // Слушатель для клиентов
                 const clientsUnsubscribe = db.collection('users').doc(userId).collection('clients')
                     .onSnapshot((snapshot) => {
-                        console.log('🔥 Firestore clients event:', snapshot.docChanges().length, 'changes');
+                        if (!App.firebase.initialLoadComplete) {
+                            return;
+                        }
                         snapshot.docChanges().forEach((change) => {
-                            console.log('Change type:', change.type, 'Client ID:', change.doc.data().id);
                             if (change.type === 'added' || change.type === 'modified') {
                                 const data = change.doc.data();
                                 const index = App.db.clients.findIndex(c => c.id === data.id);
 
                                 if (index !== -1) {
-                                    // Получаем время в миллисекундах
-                                    const getTime = (obj) => {
-                                        if (!obj) return 0;
-                                        if (obj.toMillis) return obj.toMillis();
-                                        if (obj.seconds) return obj.seconds * 1000;
-                                        if (obj instanceof Date) return obj.getTime();
-                                        return new Date(obj).getTime();
-                                    };
-
                                     const localTime = getTime(App.db.clients[index].lastModified);
                                     const cloudTime = getTime(data.lastModified);
-
-                                    console.log('Comparing times for client', data.id, {
-                                        local: new Date(localTime),
-                                        cloud: new Date(cloudTime),
-                                        cloudNewer: cloudTime > localTime
-                                    });
-
                                     if (!App.db.clients[index].lastModified || cloudTime > localTime) {
-                                        console.log('✅ Updating client', data.id);
                                         App.db.clients[index] = data;
-                                    } else {
-                                        console.log('❌ Skipping client', data.id, '- local is newer');
                                     }
                                 } else {
-                                    console.log('➕ Adding new client', data.id);
                                     App.db.clients.push(data);
                                 }
                             }
@@ -7246,16 +7211,17 @@
                 // Слушатель для оборудования
                 const equipmentUnsubscribe = db.collection('users').doc(userId).collection('equipment')
                     .onSnapshot((snapshot) => {
+                        if (!App.firebase.initialLoadComplete) {
+                            return;
+                        }
                         snapshot.docChanges().forEach((change) => {
                             if (change.type === 'added' || change.type === 'modified') {
                                 const data = change.doc.data();
                                 const index = App.db.equipment.findIndex(e => e.id === data.id);
                                 if (index !== -1) {
-                                    if (!App.db.equipment[index].lastModified ||
-                                        (data.lastModified && data.lastModified.toMillis && data.lastModified.toMillis() >
-                                            (App.db.equipment[index].lastModified.toMillis ?
-                                                App.db.equipment[index].lastModified.toMillis() :
-                                                new Date(App.db.equipment[index].lastModified).getTime()))) {
+                                    const localTime = getTime(App.db.equipment[index].lastModified);
+                                    const cloudTime = getTime(data.lastModified);
+                                    if (cloudTime > localTime) {
                                         App.db.equipment[index] = data;
                                     }
                                 } else {
@@ -7275,6 +7241,9 @@
                 // Слушатель для заказов
                 const ordersUnsubscribe = db.collection('users').doc(userId).collection('orders')
                     .onSnapshot((snapshot) => {
+                        if (!App.firebase.initialLoadComplete) {
+                            return;
+                        }
                         snapshot.docChanges().forEach((change) => {
                             if (change.type === 'added' || change.type === 'modified') {
                                 const data = change.doc.data();
@@ -7285,12 +7254,10 @@
 
                                 const index = App.db.orders.findIndex(o => o.id === data.id);
                                 if (index !== -1) {
-                                    if (!App.db.orders[index].lastModified ||
-                                        (data.lastModified && data.lastModified.toMillis && data.lastModified.toMillis() >
-                                            (App.db.orders[index].lastModified.toMillis ?
-                                                App.db.orders[index].lastModified.toMillis() :
-                                                new Date(App.db.orders[index].lastModified).getTime()))) {
-                                        App.db.orders[index] = data;
+                                    const localTime = getTime(App.db.orders[index].lastModified);
+                                    const cloudTime = getTime(data.lastModified);
+                                    if (cloudTime > localTime) {
+                                        App.db.equipment[index] = data;
                                     }
                                 } else {
                                     App.db.orders.push(data);
@@ -7311,6 +7278,9 @@
                 // Слушатель для ценовых категорий
                 const priceCategoriesUnsubscribe = db.collection('users').doc(userId).collection('priceCategories')
                     .onSnapshot((snapshot) => {
+                        if (!App.firebase.initialLoadComplete) {
+                            return;
+                        }
                         snapshot.docChanges().forEach((change) => {
                             if (change.type === 'added' || change.type === 'modified') {
                                 const data = change.doc.data();
@@ -7334,6 +7304,9 @@
                 // Слушатель для настроек (categories, orderCounter)
                 const settingsUnsubscribe = db.collection('users').doc(userId)
                     .onSnapshot((doc) => {
+                        if (!App.firebase.initialLoadComplete) {
+                            return;
+                        }
                         if (doc.exists) {
                             const data = doc.data();
                             if (data.categories) App.db.categories = data.categories;
@@ -7892,10 +7865,9 @@
 
                 document.querySelector('.header').addEventListener('click', function (e) {
                     const isMobileOrTablet = window.innerWidth <= 1200;
-                    const isCalendarPage = document.body.classList.contains('calendar-page-active');
 
                     // Гамбургер работает только на странице календаря
-                    if (isMobileOrTablet && isCalendarPage && e.clientX < 50 && e.clientY < 70) {
+                    if (isMobileOrTablet && e.clientX < 50 && e.clientY < 70) {
                         const sidebar = document.getElementById('sidebar');
                         const overlay = App.events.createSidebarOverlay();
 
@@ -7907,9 +7879,8 @@
                 document.querySelectorAll('.menu-item').forEach(item => {
                     item.addEventListener('click', function () {
                         const isMobileOrTablet = window.innerWidth <= 1200;
-                        const isCalendarPage = document.body.classList.contains('calendar-page-active');
 
-                        if (isMobileOrTablet && isCalendarPage) {
+                        if (isMobileOrTablet) {
                             const sidebar = document.getElementById('sidebar');
                             const overlay = document.querySelector('.sidebar-overlay');
                             if (sidebar && overlay) {
