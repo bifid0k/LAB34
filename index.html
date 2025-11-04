@@ -1656,7 +1656,7 @@
         <!-- Main Content -->
         <div class="main-content">
             <div class="header">
-                <h2 id="page-title" style="margin-right: 50px;">Календарь бронирования</h2>
+                <h2 id="page-title" style="margin-right: 10px;">Календарь бронирования</h2>
                 <div class="header-actions">
                     <button class="btn btn-success" id="new-order-btn">
                         <span class="material-icons">add</span>
@@ -1721,6 +1721,11 @@
                             <button class="list-tab active" data-filter="active">Активные</button>
                             <button class="list-tab" data-filter="completed">Архив</button>
                             <button class="list-tab" data-filter="drafts">Черновики</button>
+                            <button class="btn btn-danger btn-small" onclick="App.orders.openClearArchiveModal()"
+                                style="margin-left: auto;">
+                                <span class="material-icons">delete_sweep</span>
+                                Очистить архив
+                            </button>
                         </div>
                         <input type="text" class="search-box" id="orders-search"
                             placeholder="Поиск по номеру заказа, клиенту или телефону...">
@@ -2021,12 +2026,11 @@
                                         <input type="checkbox" id="autosave-toggle" checked
                                             onchange="App.settings.toggleAutosave()"
                                             style="opacity: 0; width: 0; height: 0;">
-                                        <span class="slider"
-                                            style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; 
-                                                                   background-color: #ccc; transition: .4s; border-radius: 24px;">
-                                            <span
+                                        <span class="slider" id="autosave-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; 
+                                                   background-color: #ccc; transition: .4s; border-radius: 24px;">
+                                            <span id="autosave-circle"
                                                 style="position: absolute; content: ''; height: 18px; width: 18px; left: 3px; bottom: 3px;
-                                                       background-color: white; transition: .4s; border-radius: 50%;"></span>
+                                                   background-color: white; transition: .4s; border-radius: 50%;"></span>
                                         </span>
                                     </label>
                                     <span style="font-size: 14px;">Автоматически сохранять изменения в браузере</span>
@@ -2176,7 +2180,7 @@
                         <div class="form-row">
                             <div class="form-group">
                                 <label>Общая сумма</label>
-                                <input type="number" id="total-amount" class="price-input" step="0.01">
+                                <input type="number" id="total-amount" class="price-input" step="0.01" min="0">
                             </div>
                             <div class="form-group">
                                 <label>Скидка (%)</label>
@@ -2187,7 +2191,7 @@
                         <div class="form-row">
                             <div class="form-group">
                                 <label>Оплачено</label>
-                                <input type="number" id="paid-amount" step="0.01" value="0">
+                                <input type="number" id="paid-amount" step="0.01" value="0" min="0">
                             </div>
                             <div class="form-group">
                                 <label>К доплате</label>
@@ -2486,6 +2490,32 @@
         </div>
     </div>
 
+    <!-- Clear Archive Modal -->
+    <div id="clear-archive-modal" class="modal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h3>Очистка архива</h3>
+                <span class="material-icons close-modal" onclick="App.modals.close('clear-archive-modal')">close</span>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 16px; color: var(--text-secondary);">
+                    Укажите, сколько последних заказов оставить в архиве. Остальные будут удалены безвозвратно.
+                </p>
+                <div class="form-group">
+                    <label>Количество заказов для сохранения:</label>
+                    <input type="number" id="archive-keep-count" min="0" value="10" style="width: 100%;">
+                </div>
+                <p style="margin-top: 12px; font-size: 13px; color: var(--text-secondary);">
+                    Всего в архиве: <strong id="archive-total-count">0</strong> заказов
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="App.modals.close('clear-archive-modal')">Отмена</button>
+                <button class="btn btn-danger" onclick="App.orders.clearArchive()">Очистить</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Application Main Object
         const App = {
@@ -2510,7 +2540,8 @@
                 equipmentStatusFilter: null,
                 preservedStartDate: null,
                 preservedEndDate: null,
-                currentOrderBreakdown: []
+                currentOrderBreakdown: [],
+                isLoadingOrder: true
             },
 
             // Firebase
@@ -3618,6 +3649,7 @@
                 document.getElementById('paid-amount').value = order.paidAmount;
                 document.getElementById('order-notes').value = order.notes;
                 document.getElementById('payment-notes').value = order.paymentNotes;
+                App.state.isManualPrice = order.isManualPrice || false;
 
                 App.orders.clearClients();
                 if (order.clients && order.clients.length > 0) {
@@ -3660,7 +3692,6 @@
                                 }
                             });
 
-                            // Устанавливаем основной тип и обновляем поля
                             if (mainType) {
                                 const mainTypeSelect = clientSection.querySelector('select[data-category="main-type"]');
                                 if (mainTypeSelect) {
@@ -3669,7 +3700,6 @@
                                 }
                             }
 
-                            // Группируем оборудование по категориям
                             const equipmentByCategory = {};
                             clientOrder.equipment.forEach(eq => {
                                 const item = App.db.equipment.find(e => e.id === eq.equipmentId);
@@ -3681,7 +3711,6 @@
                                 }
                             });
 
-                            // Добавляем поля и заполняем значения с задержкой
                             setTimeout(() => {
                                 Object.keys(equipmentByCategory).forEach(category => {
                                     const equipmentIds = equipmentByCategory[category];
@@ -3729,13 +3758,8 @@
                                         });
                                     }, 100);
                                 });
-                                const savedTotalAmount = order.totalAmount;
 
                                 App.orders.calculateTotal();
-
-                                if (savedTotalAmount !== undefined && savedTotalAmount !== null) {
-                                    document.getElementById('total-amount').value = savedTotalAmount;
-                                }
                             }, 100);
                         });
                     }, 100);
@@ -3756,6 +3780,7 @@
                 document.getElementById('order-notes').value = '';
                 document.getElementById('payment-notes').value = '';
                 App.orders.clearClients();
+                App.state.isManualPrice = false;
             },
 
             clearClients() {
@@ -4333,6 +4358,9 @@
             },
 
             calculateTotal() {
+                if (App.state.isManualPrice) {
+                    return;
+                }
                 if (!App.state.selectedStartDate || !App.state.selectedEndDate) {
                     document.getElementById('total-amount').value = '';
                     App.orders.updateRemainingAmount();
@@ -4613,6 +4641,7 @@
                     notes: notes,
                     paymentNotes: paymentNotes,
                     createdAt: new Date(),
+                    isManualPrice: App.state.isManualPrice || false,
                     lastModified: new Date()
                 };
             },
@@ -4706,6 +4735,9 @@
                                     const equipmentItem = App.db.equipment.find(e => e.id === eq.equipmentId);
                                     if (equipmentItem) {
                                         equipmentItem.status = 'rented';
+                                        if (App.firebase.currentUser && App.firebase.syncEnabled) {
+                                            App.firebase.saveToFirebase('equipment', equipmentItem);
+                                        }
                                     }
                                 });
                             });
@@ -4738,6 +4770,9 @@
                                 const equipmentItem = App.db.equipment.find(e => e.id === eq.equipmentId);
                                 if (equipmentItem) {
                                     equipmentItem.status = 'available';
+                                    if (App.firebase.currentUser && App.firebase.syncEnabled) {
+                                        App.firebase.saveToFirebase('equipment', equipmentItem);
+                                    }
                                 }
                             });
                         });
@@ -4750,6 +4785,9 @@
                                 const equipmentItem = App.db.equipment.find(e => e.id === eq.equipmentId);
                                 if (equipmentItem) {
                                     equipmentItem.status = 'rented';
+                                    if (App.firebase.currentUser && App.firebase.syncEnabled) {
+                                        App.firebase.saveToFirebase('equipment', equipmentItem);
+                                    }
                                 }
                             });
                         });
@@ -4761,8 +4799,10 @@
                         App.equipment.render();
                         App.clients.render();
                         App.utils.showNotification('Заказ успешно обновлён!');
-                        App.firebase.saveToFirebase('orders', orderData);
                         App.storage.save();
+                        if (App.firebase.currentUser && App.firebase.syncEnabled) {
+                            App.firebase.saveToFirebase('orders', orderData);
+                        }
                     }
                 }
             },
@@ -4778,12 +4818,17 @@
                                 const equipmentItem = App.db.equipment.find(e => e.id === eq.equipmentId);
                                 if (equipmentItem) {
                                     equipmentItem.status = 'rented';
+                                    if (App.firebase.currentUser && App.firebase.syncEnabled) {
+                                        App.firebase.saveToFirebase('equipment', equipmentItem);
+                                    }
                                 }
                             });
                         });
                         App.utils.showNotification('Заказ восстановлен');
-                        App.firebase.saveToFirebase('orders', order);
                         App.storage.save();
+                        if (App.firebase.currentUser && App.firebase.syncEnabled) {
+                            App.firebase.saveToFirebase('orders', order);
+                        }
                     } else {
                         order.status = 'cancelled';
                         order.lastModified = new Date();
@@ -4792,13 +4837,18 @@
                                 const equipmentItem = App.db.equipment.find(e => e.id === eq.equipmentId);
                                 if (equipmentItem) {
                                     equipmentItem.status = 'available';
+                                    if (App.firebase.currentUser && App.firebase.syncEnabled) {
+                                        App.firebase.saveToFirebase('equipment', equipmentItem);
+                                    }
                                 }
                             });
                         });
 
                         App.utils.showNotification('Заказ отменён');
-                        App.firebase.saveToFirebase('orders', order);
                         App.storage.save();
+                        if (App.firebase.currentUser && App.firebase.syncEnabled) {
+                            App.firebase.saveToFirebase('orders', order);
+                        }
                     }
 
                     App.orders.render();
@@ -4951,6 +5001,9 @@
                                 client.equipment.forEach(eq => {
                                     const item = App.db.equipment.find(e => e.id === eq.equipmentId);
                                     if (item) item.status = 'available';
+                                    if (App.firebase.currentUser && App.firebase.syncEnabled) {
+                                        App.firebase.saveToFirebase('equipment', item);
+                                    }
                                 });
                             });
                             App.utils.showNotification(`Заказ №${order.orderNumber} завершён`);
@@ -5223,6 +5276,45 @@
             </div>
         </div>
     `;
+            },
+
+            openClearArchiveModal() {
+                const archiveOrders = App.db.orders.filter(o => o.status === 'completed' || o.status === 'cancelled');
+                document.getElementById('archive-total-count').textContent = archiveOrders.length;
+                document.getElementById('archive-keep-count').value = Math.min(10, archiveOrders.length);
+                document.getElementById('clear-archive-modal').classList.add('show');
+            },
+
+            clearArchive() {
+                const keepCount = parseInt(document.getElementById('archive-keep-count').value) || 0;
+                const archiveOrders = App.db.orders.filter(o => o.status === 'completed' || o.status === 'cancelled');
+
+                if (archiveOrders.length <= keepCount) {
+                    alert('Нечего удалять. Количество заказов для сохранения больше или равно текущему количеству в архиве.');
+                    return;
+                }
+
+                const toDelete = archiveOrders.length - keepCount;
+                if (!confirm(`Вы уверены? Будет удалено ${toDelete} заказов из архива.`)) {
+                    return;
+                }
+
+                // Сортируем по дате (от старых к новым)
+                archiveOrders.sort((a, b) => new Date(a.endDate) - new Date(b.endDate));
+
+                // Удаляем старые заказы
+                const idsToDelete = archiveOrders.slice(0, toDelete).map(o => o.id);
+                App.db.orders = App.db.orders.filter(o => !idsToDelete.includes(o.id));
+
+                App.storage.save();
+                if (App.firebase.currentUser && App.firebase.syncEnabled) {
+                    idsToDelete.forEach(id => {
+                        App.firebase.deleteFromFirebase('orders', id);
+                    });
+                }
+                App.orders.render();
+                App.modals.close('clear-archive-modal');
+                App.utils.showNotification(`Удалено ${toDelete} заказов из архива`);
             }
         };
 
@@ -5413,18 +5505,35 @@
             },
 
             delete() {
-                if (App.state.currentEditingClient && confirm('Вы уверены, что хотите удалить этого клиента?')) {
-                    const clientIndex = App.db.clients.findIndex(c => c.id === App.state.currentEditingClient);
-                    if (clientIndex !== -1) {
-                        App.db.clients.splice(clientIndex, 1);
-                        App.utils.showNotification('Клиент удалён');
-                        App.firebase.deleteFromFirebase('clients', App.state.currentEditingClient);
-                        App.modals.close('client-modal');
-                        App.clients.render();
-                        App.storage.save();
+                if (App.state.currentEditingClient) {
+                    const clientId = App.state.currentEditingClient;
+
+                    // Проверяем, используется ли клиент в активных заказах
+                    const isUsedInOrders = App.db.orders.some(order => {
+                        if (order.status === 'cancelled' || order.status === 'completed') {
+                            return false;
+                        }
+                        return order.clients.some(client => client.clientId === clientId);
+                    });
+
+                    if (isUsedInOrders) {
+                        alert('⚠️ Невозможно удалить клиента.\n\nЭтот клиент участвует в активных заказах.\nСначала завершите или отмените эти заказы.');
+                        return;
+                    }
+
+                    if (confirm('Вы уверены, что хотите удалить этого клиента?')) {
+                        const clientIndex = App.db.clients.findIndex(c => c.id === clientId);
+                        if (clientIndex !== -1) {
+                            App.db.clients.splice(clientIndex, 1);
+                            App.utils.showNotification('Клиент удалён');
+                            App.firebase.deleteFromFirebase('clients', clientId);
+                            App.modals.close('client-modal');
+                            App.clients.render();
+                            App.storage.save();
+                        }
                     }
                 }
-            }
+            },
         };
 
         // Equipment Module
@@ -5754,6 +5863,21 @@
                 };
 
                 document.getElementById('delete-equipment-btn').onclick = () => {
+                    // Проверяем, используется ли оборудование в активных заказах
+                    const isUsedInOrders = App.db.orders.some(order => {
+                        if (order.status === 'cancelled' || order.status === 'completed') {
+                            return false;
+                        }
+                        return order.clients.some(client =>
+                            client.equipment.some(eq => eq.equipmentId === equipmentId)
+                        );
+                    });
+
+                    if (isUsedInOrders) {
+                        alert('⚠️ Невозможно удалить оборудование.\n\nЭто оборудование используется в активных заказах.\nСначала завершите или отмените эти заказы.');
+                        return;
+                    }
+
                     if (confirm('Вы уверены, что хотите удалить это оборудование?')) {
                         const index = App.db.equipment.findIndex(e => e.id === equipmentId);
                         if (index !== -1) {
@@ -6886,7 +7010,18 @@
 
             toggleAutosave() {
                 const toggle = document.getElementById('autosave-toggle');
+                const slider = document.getElementById('autosave-slider');
+                const circle = document.getElementById('autosave-circle');
+
                 App.state.autosaveEnabled = toggle.checked;
+
+                if (toggle.checked) {
+                    slider.style.backgroundColor = '#28a745';
+                    circle.style.transform = 'translateX(24px)';
+                } else {
+                    slider.style.backgroundColor = '#ccc';
+                    circle.style.transform = 'translateX(0)';
+                }
 
                 if (App.state.autosaveEnabled) {
                     App.storage.save();
@@ -7205,7 +7340,7 @@
                     setTimeout(() => {
                         App.firebase.initialLoadComplete = true;
                         App.firebase.setupRealtimeListeners();
-                    }, 1000);
+                    }, 500);
                 });
             },
 
@@ -7733,7 +7868,16 @@
                     }
                 });
 
-                document.getElementById('total-amount').addEventListener('input', App.orders.updateRemainingAmount);
+                document.getElementById('total-amount').addEventListener('input', function () {
+                    const value = parseFloat(this.value) || 0;
+                    if (value === 0 && this.value === '0') {
+                        App.state.isManualPrice = false;
+                        App.orders.calculateTotal();
+                    } else {
+                        App.state.isManualPrice = true;
+                    }
+                    App.orders.updateRemainingAmount();
+                });
                 document.getElementById('pickup-time').addEventListener('change', function () {
                     App.orders.calculateTotal();
                     if (App.state.selectedStartDate && App.state.selectedEndDate) {
@@ -8012,8 +8156,19 @@
 
             setTimeout(() => {
                 const autosaveToggle = document.getElementById('autosave-toggle');
+                const slider = document.getElementById('autosave-slider');
+                const circle = document.getElementById('autosave-circle');
+
                 if (autosaveToggle) {
                     autosaveToggle.checked = App.state.autosaveEnabled;
+
+                    if (App.state.autosaveEnabled) {
+                        slider.style.backgroundColor = '#28a745';
+                        circle.style.transform = 'translateX(24px)';
+                    } else {
+                        slider.style.backgroundColor = '#ccc';
+                        circle.style.transform = 'translateX(0)';
+                    }
                 }
             }, 100);
         };
