@@ -1,6 +1,7 @@
-const CACHE_NAME = 'rental-app-v1.0.0';
+const CACHE_NAME = 'rental-app-v2';
 const urlsToCache = [
     './',
+    './manifest.json',
     'https://fonts.googleapis.com/icon?family=Material+Icons',
     'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap'
 ];
