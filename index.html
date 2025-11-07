@@ -2057,7 +2057,7 @@
                                         <h5 style="font-size: 14px; margin-bottom: 8px; color: #dc2626;">Очистка кэша
                                         </h5>
                                         <p style="font-size: 13px; color: #6c757d; margin-bottom: 12px;">
-                                            Удалит кэш Service Worker и все сохранённые данные
+                                            Удалит кэш Service Worker
                                         </p>
                                         <button onclick="App.pwa.clearCache()" class="btn"
                                             style="background: #dc3545; color: white;">
@@ -7685,7 +7685,7 @@
                                     const localTime = getTime(App.db.orders[index].lastModified);
                                     const cloudTime = getTime(data.lastModified);
                                     if (cloudTime > localTime) {
-                                        App.db.equipment[index] = data;
+                                        App.db.orders[index] = data;
                                     }
                                 } else {
                                     App.db.orders.push(data);
