@@ -2,11 +2,12 @@
     "name": "Прокат горнолыжного оборудования",
     "short_name": "Прокат",
     "description": "Система управления прокатом горнолыжного оборудования",
-    "start_url": "/",
+    "start_url": "./",
     "display": "standalone",
     "background_color": "#ffffff",
     "theme_color": "#5e72e4",
     "orientation": "portrait-primary",
+    "scope": "./",
     "icons": [
         {
             "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%235e72e4'%3E%3Cpath d='M14 16v6l-4-6h4zM10 6l4 6H10V6z'/%3E%3C/svg%3E",
