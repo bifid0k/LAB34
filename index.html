@@ -1719,12 +1719,13 @@
                     <div class="list-container">
                         <div class="list-tabs">
                             <button class="list-tab active" data-filter="active">Активные</button>
-                            <button class="list-tab" data-filter="completed">Архив</button>
+                            <button class="list-tab" data-filter="completed">Завершённые</button>
+                            <button class="list-tab" data-filter="cancelled">Отменённые</button>
                             <button class="list-tab" data-filter="drafts">Черновики</button>
                             <button class="btn btn-danger btn-small" onclick="App.orders.openClearArchiveModal()"
                                 style="margin-left: auto;">
                                 <span class="material-icons">delete_sweep</span>
-                                Очистить архив
+                                Очистить отменённые
                             </button>
                         </div>
                         <input type="text" class="search-box" id="orders-search"
@@ -2175,7 +2176,8 @@
                     </button>
 
                     <div style="background: #f8f9fa; padding: 20px; border-radius: 10px;">
-                        <h4 style="margin-bottom: 16px; font-size: 16px;">Расчет стоимости</h4>
+                        <h4 style="margin-bottom: 16px; font-size: 16px;">Расчет стоимости: <span id="calculated-price"
+                                style="color: var(--primary-color); font-weight: 600;">0 ₽</span></h4>
 
                         <div class="form-row">
                             <div class="form-group">
@@ -2494,19 +2496,23 @@
     <div id="clear-archive-modal" class="modal">
         <div class="modal-content" style="max-width: 400px;">
             <div class="modal-header">
-                <h3>Очистка архива</h3>
+                <h3>Очистка отменённых заказов</h3>
                 <span class="material-icons close-modal" onclick="App.modals.close('clear-archive-modal')">close</span>
             </div>
             <div class="modal-body">
                 <p style="margin-bottom: 16px; color: var(--text-secondary);">
-                    Укажите, сколько последних заказов оставить в архиве. Остальные будут удалены безвозвратно.
+                    Укажите, сколько последних отменённых заказов сохранить. Остальные будут удалены безвозвратно.
                 </p>
+                <div class="form-group">
+                    <label>Пароль для подтверждения:</label>
+                    <input type="password" id="archive-password" placeholder="Введите пароль" style="width: 100%;">
+                </div>
                 <div class="form-group">
                     <label>Количество заказов для сохранения:</label>
                     <input type="number" id="archive-keep-count" min="0" value="10" style="width: 100%;">
                 </div>
                 <p style="margin-top: 12px; font-size: 13px; color: var(--text-secondary);">
-                    Всего в архиве: <strong id="archive-total-count">0</strong> заказов
+                    Всего отменённых: <strong id="archive-total-count">0</strong> заказов
                 </p>
             </div>
             <div class="modal-footer">
@@ -2812,6 +2818,16 @@
                 }, 3000);
             },
 
+            simpleHash(str) {
+                let hash = 0;
+                for (let i = 0; i < str.length; i++) {
+                    const char = str.charCodeAt(i);
+                    hash = ((hash << 5) - hash) + char;
+                    hash = hash & hash;
+                }
+                return hash.toString(36);
+            },
+
             getOrderNumber() {
                 const today = new Date();
                 const year = String(today.getFullYear()).slice(-2);
@@ -2832,6 +2848,7 @@
                     clients: App.db.clients,
                     equipment: App.db.equipment,
                     categories: App.db.categories,
+                    categoriesLastModified: App.state.categoriesLastModified ? App.state.categoriesLastModified.toISOString() : null,
                     priceCategories: App.db.priceCategories,
                     orders: App.db.orders,
                     orderDrafts: App.db.orderDrafts,
@@ -2851,46 +2868,56 @@
 
             load() {
                 try {
-                    const savedData = localStorage.getItem('rentalAppData');
-                    if (!savedData) return false;
+                    const data = localStorage.getItem('rentalAppData');
+                    if (data) {
+                        const parsed = JSON.parse(data);
+                        App.db.orders = parsed.orders || [];
+                        App.db.clients = parsed.clients || [];
+                        App.db.equipment = parsed.equipment || [];
+                        App.db.categories = parsed.categories || [];
+                        App.db.priceCategories = parsed.priceCategories || [];
+                        App.db.orderDrafts = parsed.orderDrafts || [];
+                        App.state.orderCounter = parsed.orderCounter || 1;
 
-                    const data = JSON.parse(savedData);
+                        // Инициализируем categoriesLastModified
+                        if (parsed.categoriesLastModified) {
+                            App.state.categoriesLastModified = new Date(parsed.categoriesLastModified);
+                        } else if (App.db.categories.length > 0) {
+                            // Если категории есть, но нет даты - берем максимальную дату из категорий
+                            const maxDate = App.db.categories.reduce((max, cat) => {
+                                const catDate = cat.lastModified ? new Date(cat.lastModified) : new Date(0);
+                                return catDate > max ? catDate : max;
+                            }, new Date(0));
+                            App.state.categoriesLastModified = maxDate;
+                        }
 
-                    App.db.clients = data.clients || [];
-                    App.db.equipment = data.equipment || [];
-                    App.db.categories = data.categories || [];
-                    App.db.priceCategories = data.priceCategories || [];
-                    App.db.orders = data.orders || [];
-                    App.db.orderDrafts = data.orderDrafts || [];
-                    App.state.orderCounter = data.orderCounter || 1;
-
-                    // Convert dates
-                    App.db.orders.forEach(order => {
-                        if (order.startDate) order.startDate = new Date(order.startDate);
-                        if (order.endDate) order.endDate = new Date(order.endDate);
-                        if (order.createdAt) order.createdAt = new Date(order.createdAt);
-                        if (!order.clients || !Array.isArray(order.clients)) order.clients = [];
-                        order.clients.forEach(client => {
-                            if (!client.equipment || !Array.isArray(client.equipment)) {
-                                client.equipment = [];
-                            }
+                        App.db.orders.forEach(order => {
+                            if (order.startDate) order.startDate = new Date(order.startDate);
+                            if (order.endDate) order.endDate = new Date(order.endDate);
+                            if (order.createdAt) order.createdAt = new Date(order.createdAt);
+                            if (!order.clients || !Array.isArray(order.clients)) order.clients = [];
+                            order.clients.forEach(client => {
+                                if (!client.equipment || !Array.isArray(client.equipment)) {
+                                    client.equipment = [];
+                                }
+                            });
                         });
-                    });
 
-                    App.db.orderDrafts.forEach(draft => {
-                        if (draft.startDate) draft.startDate = new Date(draft.startDate);
-                        if (draft.endDate) draft.endDate = new Date(draft.endDate);
-                        if (draft.createdAt) draft.createdAt = new Date(draft.createdAt);
-                        if (!draft.clients || !Array.isArray(draft.clients)) draft.clients = [];
-                        draft.clients.forEach(client => {
-                            if (!client.equipment || !Array.isArray(client.equipment)) {
-                                client.equipment = [];
-                            }
+                        App.db.orderDrafts.forEach(draft => {
+                            if (draft.startDate) draft.startDate = new Date(draft.startDate);
+                            if (draft.endDate) draft.endDate = new Date(draft.endDate);
+                            if (draft.createdAt) draft.createdAt = new Date(draft.createdAt);
+                            if (!draft.clients || !Array.isArray(draft.clients)) draft.clients = [];
+                            draft.clients.forEach(client => {
+                                if (!client.equipment || !Array.isArray(client.equipment)) {
+                                    client.equipment = [];
+                                }
+                            });
                         });
-                    });
 
-                    App.storage.updateLastSaveTime(data.lastSave);
-                    return true;
+                        App.storage.updateLastSaveTime(data.lastSave);
+                        return true;
+                    }
                 } catch (e) {
                     console.error('Ошибка загрузки:', e);
                     return false;
@@ -3373,7 +3400,9 @@
                         });
                     }
                 } else if (activeTab === 'completed') {
-                    filteredOrders = App.db.orders.filter(o => o.status === 'completed' || o.status === 'cancelled');
+                    filteredOrders = App.db.orders.filter(o => o.status === 'completed');
+                } else if (activeTab === 'cancelled') {
+                    filteredOrders = App.db.orders.filter(o => o.status === 'cancelled');
                 } else if (activeTab === 'drafts') {
                     filteredOrders = App.db.orderDrafts;
                 }
@@ -3774,6 +3803,7 @@
                 document.getElementById('pickup-time').value = '10:00';
                 document.getElementById('return-time').value = '18:00';
                 document.getElementById('total-amount').value = '';
+                document.getElementById('calculated-price').textContent = '0 ₽';
                 document.getElementById('discount').value = '0';
                 document.getElementById('paid-amount').value = '0';
                 document.getElementById('remaining-amount').value = '';
@@ -4358,9 +4388,6 @@
             },
 
             calculateTotal() {
-                if (App.state.isManualPrice) {
-                    return;
-                }
                 if (!App.state.selectedStartDate || !App.state.selectedEndDate) {
                     document.getElementById('total-amount').value = '';
                     App.orders.updateRemainingAmount();
@@ -4482,7 +4509,10 @@
                 });
 
                 App.state.currentOrderBreakdown = breakdown;
-                document.getElementById('total-amount').value = totalAmount.toFixed(2);
+                document.getElementById('calculated-price').textContent = totalAmount.toFixed(2) + ' ₽';
+                if (!App.state.isManualPrice) {
+                    document.getElementById('total-amount').value = totalAmount.toFixed(2);
+                }
                 App.orders.updateRemainingAmount();
             },
 
@@ -4711,7 +4741,12 @@
 
                     const isDraft = App.state.currentEditingOrder && App.state.currentEditingOrder.toString().includes('draft');
 
-                    if (App.state.currentEditingOrder && !isDraft) {
+                    const editingOrder = App.state.currentEditingOrder ?
+                        App.db.orders.find(o => o.id === App.state.currentEditingOrder) : null;
+                    const isCompletedOrder = editingOrder && editingOrder.status === 'completed';
+
+                    if (App.state.currentEditingOrder && !isDraft && !isCompletedOrder) {
+                        // Обычное обновление для незавершенных заказов
                         App.orders.update();
                     } else {
                         const orderData = App.orders.collectData();
@@ -4734,9 +4769,18 @@
                                 client.equipment.forEach(eq => {
                                     const equipmentItem = App.db.equipment.find(e => e.id === eq.equipmentId);
                                     if (equipmentItem) {
-                                        equipmentItem.status = 'rented';
-                                        if (App.firebase.currentUser && App.firebase.syncEnabled) {
-                                            App.firebase.saveToFirebase('equipment', equipmentItem);
+                                        // Проверяем точное время начала заказа
+                                        const now = new Date();
+                                        const orderStart = new Date(orderData.startDate);
+                                        const [startHour, startMin] = (orderData.pickupTime || '10:00').split(':').map(Number);
+                                        orderStart.setHours(startHour, startMin, 0, 0);
+
+                                        // Устанавливаем статус rented только если время заказа уже наступило
+                                        if (now >= orderStart && equipmentItem.status === 'available') {
+                                            equipmentItem.status = 'rented';
+                                            if (App.firebase.currentUser && App.firebase.syncEnabled) {
+                                                App.firebase.saveToFirebase('equipment', equipmentItem);
+                                            }
                                         }
                                     }
                                 });
@@ -4768,10 +4812,25 @@
                         oldOrder.clients.forEach(client => {
                             client.equipment.forEach(eq => {
                                 const equipmentItem = App.db.equipment.find(e => e.id === eq.equipmentId);
-                                if (equipmentItem) {
-                                    equipmentItem.status = 'available';
-                                    if (App.firebase.currentUser && App.firebase.syncEnabled) {
-                                        App.firebase.saveToFirebase('equipment', equipmentItem);
+                                if (equipmentItem && equipmentItem.status === 'rented') {
+                                    // Проверяем, не используется ли оборудование в других активных заказах
+                                    const usedInOtherOrders = App.db.orders.some(order => {
+                                        if (order.id === App.state.currentEditingOrder ||
+                                            order.status === 'cancelled' ||
+                                            order.status === 'completed') {
+                                            return false;
+                                        }
+                                        return order.clients.some(c =>
+                                            c.equipment.some(e => e.equipmentId === eq.equipmentId)
+                                        );
+                                    });
+
+                                    // Освобождаем только если не используется в других заказах
+                                    if (!usedInOtherOrders) {
+                                        equipmentItem.status = 'available';
+                                        if (App.firebase.currentUser && App.firebase.syncEnabled) {
+                                            App.firebase.saveToFirebase('equipment', equipmentItem);
+                                        }
                                     }
                                 }
                             });
@@ -4784,9 +4843,18 @@
                             client.equipment.forEach(eq => {
                                 const equipmentItem = App.db.equipment.find(e => e.id === eq.equipmentId);
                                 if (equipmentItem) {
-                                    equipmentItem.status = 'rented';
-                                    if (App.firebase.currentUser && App.firebase.syncEnabled) {
-                                        App.firebase.saveToFirebase('equipment', equipmentItem);
+                                    // Проверяем точное время начала заказа
+                                    const now = new Date();
+                                    const orderStart = new Date(orderData.startDate);
+                                    const [startHour, startMin] = (orderData.pickupTime || '10:00').split(':').map(Number);
+                                    orderStart.setHours(startHour, startMin, 0, 0);
+
+                                    // Устанавливаем статус rented только если время заказа уже наступило
+                                    if (now >= orderStart && equipmentItem.status === 'available') {
+                                        equipmentItem.status = 'rented';
+                                        if (App.firebase.currentUser && App.firebase.syncEnabled) {
+                                            App.firebase.saveToFirebase('equipment', equipmentItem);
+                                        }
                                     }
                                 }
                             });
@@ -4817,9 +4885,18 @@
                             client.equipment.forEach(eq => {
                                 const equipmentItem = App.db.equipment.find(e => e.id === eq.equipmentId);
                                 if (equipmentItem) {
-                                    equipmentItem.status = 'rented';
-                                    if (App.firebase.currentUser && App.firebase.syncEnabled) {
-                                        App.firebase.saveToFirebase('equipment', equipmentItem);
+                                    // Проверяем точное время начала заказа
+                                    const now = new Date();
+                                    const orderStart = new Date(order.startDate);
+                                    const [startHour, startMin] = (order.pickupTime || '10:00').split(':').map(Number);
+                                    orderStart.setHours(startHour, startMin, 0, 0);
+
+                                    // Устанавливаем статус rented только если время заказа уже наступило
+                                    if (now >= orderStart && equipmentItem.status === 'available') {
+                                        equipmentItem.status = 'rented';
+                                        if (App.firebase.currentUser && App.firebase.syncEnabled) {
+                                            App.firebase.saveToFirebase('equipment', equipmentItem);
+                                        }
                                     }
                                 }
                             });
@@ -4828,6 +4905,37 @@
                         App.storage.save();
                         if (App.firebase.currentUser && App.firebase.syncEnabled) {
                             App.firebase.saveToFirebase('orders', order);
+                        }
+                    } else if (order.status === 'completed') {
+                        // Создаем копию завершенного заказа как новый активный
+                        const restoredOrder = {
+                            ...order,
+                            id: Date.now(),
+                            orderNumber: App.utils.getOrderNumber(),
+                            status: 'booked',
+                            paidAmount: 0,
+                            createdAt: new Date(),
+                            lastModified: new Date()
+                        };
+
+                        App.db.orders.unshift(restoredOrder);
+
+                        restoredOrder.clients.forEach(client => {
+                            client.equipment.forEach(eq => {
+                                const equipmentItem = App.db.equipment.find(e => e.id === eq.equipmentId);
+                                if (equipmentItem) {
+                                    equipmentItem.status = 'rented';
+                                    if (App.firebase.currentUser && App.firebase.syncEnabled) {
+                                        App.firebase.saveToFirebase('equipment', equipmentItem);
+                                    }
+                                }
+                            });
+                        });
+
+                        App.utils.showNotification('Создан новый заказ на основе завершенного');
+                        App.storage.save();
+                        if (App.firebase.currentUser && App.firebase.syncEnabled) {
+                            App.firebase.saveToFirebase('orders', restoredOrder);
                         }
                     } else {
                         order.status = 'cancelled';
@@ -5065,7 +5173,7 @@
 
                     pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight);
 
-                    const fileName = `Договор_${orderData.orderNumber || 'новый'}_${new Date().toLocaleDateString('ru-RU').replace(/\./g, '-')}.pdf`;
+                    const fileName = `Договор_${orderData.orderNumber || 'новый'}.pdf`;
                     pdf.save(fileName);
 
                     App.utils.showNotification('PDF сохранен');
@@ -5279,23 +5387,33 @@
             },
 
             openClearArchiveModal() {
-                const archiveOrders = App.db.orders.filter(o => o.status === 'completed' || o.status === 'cancelled');
+                const archiveOrders = App.db.orders.filter(o => o.status === 'cancelled');
+                document.getElementById('archive-password').value = '';
                 document.getElementById('archive-total-count').textContent = archiveOrders.length;
                 document.getElementById('archive-keep-count').value = Math.min(10, archiveOrders.length);
                 document.getElementById('clear-archive-modal').classList.add('show');
             },
 
             clearArchive() {
+                const password = document.getElementById('archive-password').value;
+                const hashedPassword = App.utils.simpleHash(password);
+
+                // Хеш от '12345' = 'ruxir'
+                if (hashedPassword !== 'ruxir') {
+                    alert('❌ Неверный пароль!');
+                    return;
+                }
+
                 const keepCount = parseInt(document.getElementById('archive-keep-count').value) || 0;
-                const archiveOrders = App.db.orders.filter(o => o.status === 'completed' || o.status === 'cancelled');
+                const archiveOrders = App.db.orders.filter(o => o.status === 'cancelled');
 
                 if (archiveOrders.length <= keepCount) {
-                    alert('Нечего удалять. Количество заказов для сохранения больше или равно текущему количеству в архиве.');
+                    alert('Нечего удалять. Количество заказов для сохранения больше или равно текущему количеству отменённых заказов.');
                     return;
                 }
 
                 const toDelete = archiveOrders.length - keepCount;
-                if (!confirm(`Вы уверены? Будет удалено ${toDelete} заказов из архива.`)) {
+                if (!confirm(`Вы уверены? Будет удалено ${toDelete} отменённых заказов.`)) {
                     return;
                 }
 
@@ -5307,14 +5425,17 @@
                 App.db.orders = App.db.orders.filter(o => !idsToDelete.includes(o.id));
 
                 App.storage.save();
+
+                // Удаляем из Firebase
                 if (App.firebase.currentUser && App.firebase.syncEnabled) {
                     idsToDelete.forEach(id => {
                         App.firebase.deleteFromFirebase('orders', id);
                     });
                 }
+
                 App.orders.render();
                 App.modals.close('clear-archive-modal');
-                App.utils.showNotification(`Удалено ${toDelete} заказов из архива`);
+                App.utils.showNotification(`Удалено ${toDelete} отменённых заказов`);
             }
         };
 
@@ -5542,6 +5663,10 @@
                 const activeCategory = document.querySelector('#equipment-page .equipment-tab.active')?.dataset.category;
                 if (!activeCategory) return;
 
+                if (!App.state.equipmentStatusFilter) {
+                    App.state.equipmentStatusFilter = 'available_and_for_sale';
+                }
+
                 const container = document.getElementById('equipment-list');
 
                 const existingFilters = document.getElementById('equipment-status-filters');
@@ -5553,11 +5678,17 @@
                 filterButtons.id = 'equipment-status-filters';
                 filterButtons.style.cssText = 'display: flex; gap: 8px; margin-bottom: 16px;';
                 filterButtons.innerHTML = `
-    <button onclick="App.state.equipmentStatusFilter = null; App.equipment.render()"
+    <button onclick="App.state.equipmentStatusFilter = 'available_and_for_sale'; App.equipment.render()"
         style="padding: 6px 14px; border: 1px solid #dee2e6; border-radius: 20px;
-        background: ${!App.state.equipmentStatusFilter ? '#5e72e4' : 'white'};
-        color: ${!App.state.equipmentStatusFilter ? 'white' : '#495057'}; font-size: 13px; cursor: pointer;">
-        Все
+        background: ${App.state.equipmentStatusFilter === 'available_and_for_sale' || !App.state.equipmentStatusFilter ? '#5e72e4' : 'white'};
+        color: ${App.state.equipmentStatusFilter === 'available_and_for_sale' || !App.state.equipmentStatusFilter ? 'white' : '#495057'}; font-size: 13px; cursor: pointer;">
+        Доступное
+    </button>
+    <button onclick="App.state.equipmentStatusFilter = 'in_rental'; App.equipment.render()"
+        style="padding: 6px 14px; border: 1px solid #dee2e6; border-radius: 20px;
+        background: ${App.state.equipmentStatusFilter === 'in_rental' ? '#2dce89' : 'white'};
+        color: ${App.state.equipmentStatusFilter === 'in_rental' ? 'white' : '#495057'}; font-size: 13px; cursor: pointer;">
+        В прокате
     </button>
     <button onclick="App.state.equipmentStatusFilter = 'for_sale'; App.equipment.render()"
         style="padding: 6px 14px; border: 1px solid #dee2e6; border-radius: 20px;
@@ -5571,6 +5702,12 @@
         color: ${App.state.equipmentStatusFilter === 'sold' ? 'white' : '#495057'}; font-size: 13px; cursor: pointer;">
         Продано
     </button>
+    <button onclick="App.state.equipmentStatusFilter = 'damaged'; App.equipment.render()"
+        style="padding: 6px 14px; border: 1px solid #dee2e6; border-radius: 20px;
+        background: ${App.state.equipmentStatusFilter === 'damaged' ? '#f5365c' : 'white'};
+        color: ${App.state.equipmentStatusFilter === 'damaged' ? 'white' : '#495057'}; font-size: 13px; cursor: pointer;">
+        Повреждено
+    </button>
 `;
 
                 container.parentNode.insertBefore(filterButtons, container);
@@ -5578,7 +5715,46 @@
                 let filteredEquipment = App.db.equipment.filter(e => e.category === activeCategory);
 
                 if (App.state.equipmentStatusFilter) {
-                    filteredEquipment = filteredEquipment.filter(e => e.status === App.state.equipmentStatusFilter);
+                    if (App.state.equipmentStatusFilter === 'available_and_for_sale') {
+                        filteredEquipment = filteredEquipment.filter(e =>
+                            e.status === 'available' || e.status === 'for_sale'
+                        );
+                    } else if (App.state.equipmentStatusFilter === 'in_rental') {
+                        // Для "В прокате" проверяем наличие активного заказа в текущее время
+                        const now = new Date();
+
+                        filteredEquipment = filteredEquipment.filter(item => {
+                            // Ищем активный заказ с этим оборудованием
+                            const activeOrder = App.db.orders.find(order => {
+                                if (order.status === 'cancelled' || order.status === 'completed') {
+                                    return false;
+                                }
+                                return order.clients.some(client =>
+                                    client.equipment.some(eq => eq.equipmentId === item.id)
+                                );
+                            });
+
+                            if (!activeOrder) return false;
+
+                            // Проверяем, что текущее время в периоде заказа
+                            const orderStart = new Date(activeOrder.startDate);
+                            const [startHour, startMin] = (activeOrder.pickupTime || '10:00').split(':').map(Number);
+                            orderStart.setHours(startHour, startMin, 0, 0);
+
+                            const orderEnd = new Date(activeOrder.endDate);
+                            const [endHour, endMin] = (activeOrder.returnTime || '18:00').split(':').map(Number);
+                            orderEnd.setHours(endHour, endMin, 59, 999);
+
+                            return now >= orderStart && now <= orderEnd;
+                        });
+                    } else {
+                        filteredEquipment = filteredEquipment.filter(e => e.status === App.state.equipmentStatusFilter);
+                    }
+                } else {
+                    // По умолчанию показываем доступное
+                    filteredEquipment = filteredEquipment.filter(e =>
+                        e.status === 'available' || e.status === 'for_sale'
+                    );
                 }
 
                 if (searchQuery) {
@@ -5586,6 +5762,43 @@
                         item.name.toLowerCase().includes(searchQuery.toLowerCase())
                     );
                 }
+
+                const now = new Date();
+
+                filteredEquipment.forEach(item => {
+                    // По умолчанию берем реальный статус
+                    item.displayStatus = item.status;
+
+                    // Проверяем, есть ли активный заказ с этим оборудованием
+                    const activeOrder = App.db.orders.find(order => {
+                        if (order.status === 'cancelled' || order.status === 'completed') {
+                            return false;
+                        }
+                        return order.clients.some(client =>
+                            client.equipment.some(eq => eq.equipmentId === item.id)
+                        );
+                    });
+
+                    if (activeOrder) {
+                        // Создаем точное время начала заказа
+                        const orderStart = new Date(activeOrder.startDate);
+                        const [startHour, startMin] = (activeOrder.pickupTime || '10:00').split(':').map(Number);
+                        orderStart.setHours(startHour, startMin, 0, 0);
+
+                        // Создаем точное время окончания заказа
+                        const orderEnd = new Date(activeOrder.endDate);
+                        const [endHour, endMin] = (activeOrder.returnTime || '18:00').split(':').map(Number);
+                        orderEnd.setHours(endHour, endMin, 59, 999);
+
+                        // Показываем "В прокате" только если текущий момент находится в периоде заказа
+                        if (now >= orderStart && now <= orderEnd) {
+                            item.displayStatus = 'rented';
+                        } else {
+                            // Заказ в будущем или уже завершился - не меняем статус
+                            item.displayStatus = item.status;
+                        }
+                    }
+                });
 
                 filteredEquipment.sort((a, b) => {
                     if (a.length !== null && a.length !== undefined && b.length !== null && b.length !== undefined) {
@@ -6101,9 +6314,23 @@
                     recommended = sorted.filter(e => e.diff <= 5);
 
                 } else if (categoryId === 'skis') {
-                    if (!client.height) return [];
-                    const minLength = client.height + 10;
-                    const maxLength = client.height + 25;
+                    if (!client.height || !client.weight) return [];
+                    const weightFactor = client.weight / client.height;
+                    let minLength, maxLength;
+
+                    if (weightFactor > 0.55) {
+                        // Тяжелый вес - нужны более длинные и жесткие лыжи
+                        minLength = client.height;
+                        maxLength = client.height + 25;
+                    } else if (weightFactor < 0.4) {
+                        // Легкий вес - можно короче
+                        minLength = client.height - 15;
+                        maxLength = client.height;
+                    } else {
+                        // Нормальное соотношение - стандартный подбор
+                        minLength = client.height - 10;
+                        maxLength = client.height + 15;
+                    }
 
                     recommended = availableEquipment.filter(e =>
                         e.length && e.length >= minLength && e.length <= maxLength
@@ -6384,6 +6611,7 @@
 
                 App.categories.updateTabs();
                 App.modals.close('category-modal');
+                App.state.categoriesLastModified = new Date();
                 App.firebase.saveToFirebase('settings', {});
                 App.storage.save();
             },
@@ -6459,6 +6687,7 @@
                 App.equipment.render();
 
                 App.utils.showNotification('Категория удалена');
+                App.state.categoriesLastModified = new Date();
                 App.firebase.saveToFirebase('settings', {});
                 App.storage.save();
             },
@@ -7157,15 +7386,17 @@
             },
 
             initializeCategories() {
+                const now = new Date();
                 App.db.categories = [
-                    { id: 'snowboards', name: 'Сноуборды', type: 'main', icon: 'snowboarding', additionalPrice: 0 },
-                    { id: 'skis', name: 'Лыжи', type: 'main', icon: 'downhill_skiing', additionalPrice: 0 },
-                    { id: 'snowboard-boots', name: 'Ботинки для сноуборда', type: 'auxiliary', parent: 'snowboards', additionalPrice: 200 },
-                    { id: 'ski-boots', name: 'Ботинки для лыж', type: 'auxiliary', parent: 'skis', additionalPrice: 200 },
-                    { id: 'bindings', name: 'Крепления', type: 'auxiliary', parent: 'snowboards', additionalPrice: 150 },
-                    { id: 'poles', name: 'Палочки', type: 'auxiliary', parent: 'skis', additionalPrice: 100 },
-                    { id: 'helmets', name: 'Шлемы', type: 'secondary', additionalPrice: 0 },
-                    { id: 'goggles', name: 'Маски', type: 'secondary', additionalPrice: 0 }
+                    { id: 'snowboards', name: 'Сноуборды', type: 'main', additionalPrice: 0, lastModified: now },
+                    { id: 'skis', name: 'Лыжи', type: 'main', additionalPrice: 0, lastModified: now },
+                    { id: 'snowboard-boots', name: 'Ботинки для сноуборда', type: 'auxiliary', parent: 'snowboards', additionalPrice: 0, lastModified: now },
+                    { id: 'bindings', name: 'Крепления', type: 'auxiliary', parent: 'snowboards', additionalPrice: 0, lastModified: now },
+                    { id: 'ski-boots', name: 'Ботинки для лыж', type: 'auxiliary', parent: 'skis', additionalPrice: 0, lastModified: now },
+                    { id: 'poles', name: 'Палки', type: 'auxiliary', parent: 'skis', additionalPrice: 0, lastModified: now },
+                    { id: 'helmet', name: 'Шлем', type: 'secondary', additionalPrice: 0, lastModified: now },
+                    { id: 'goggles', name: 'Маска', type: 'secondary', additionalPrice: 0, lastModified: now },
+                    { id: 'gloves', name: 'Перчатки', type: 'secondary', additionalPrice: 0, lastModified: now }
                 ];
             },
 
@@ -7529,7 +7760,23 @@
                     const settingsDoc = await db.collection('users').doc(userId).get();
                     if (settingsDoc.exists) {
                         const data = settingsDoc.data();
-                        if (data.categories) App.db.categories = data.categories;
+
+                        // Умная загрузка категорий с проверкой lastModified
+                        if (data.categories) {
+                            const firebaseCategoriesModified = data.categoriesLastModified ?
+                                (data.categoriesLastModified.toDate ? data.categoriesLastModified.toDate() : new Date(data.categoriesLastModified)) :
+                                null;
+                            const localCategoriesModified = App.state.categoriesLastModified || null;
+
+                            // Если в Firebase категории новее или локальных нет - загружаем из Firebase
+                            if (!localCategoriesModified ||
+                                (firebaseCategoriesModified && firebaseCategoriesModified > localCategoriesModified)) {
+                                App.db.categories = data.categories;
+                                App.state.categoriesLastModified = firebaseCategoriesModified;
+                            }
+                            // Иначе оставляем локальные (они новее)
+                        }
+
                         if (data.orderCounter) App.state.orderCounter = data.orderCounter;
                         if (data.orderDrafts) App.db.orderDrafts = data.orderDrafts;
                     }
@@ -7664,13 +7911,29 @@
                     App.utils.showNotification('Синхронизация локальных данных...');
 
                     // Настройки
-                    batch.set(db.collection('users').doc(userId), {
-                        categories: App.db.categories,
+                    const settingsDoc = await db.collection('users').doc(userId).get();
+                    let shouldUploadCategories = true;
+
+                    if (settingsDoc.exists && settingsDoc.data().categoriesLastModified) {
+                        const firebaseModified = settingsDoc.data().categoriesLastModified.toDate();
+                        const localModified = App.state.categoriesLastModified || new Date(0);
+
+                        // Загружаем только если локальные категории новее
+                        shouldUploadCategories = localModified >= firebaseModified;
+                    }
+
+                    const settingsData = {
                         orderCounter: App.state.orderCounter,
                         orderDrafts: App.db.orderDrafts,
                         lastSync: firebase.firestore.FieldValue.serverTimestamp()
-                    }, { merge: true }); // ВАЖНО: merge вместо перезаписи
+                    };
 
+                    if (shouldUploadCategories) {
+                        settingsData.categories = App.db.categories;
+                        settingsData.categoriesLastModified = App.state.categoriesLastModified || new Date();
+                    }
+
+                    batch.set(db.collection('users').doc(userId), settingsData, { merge: true });
                     // Клиенты
                     App.db.clients.forEach(client => {
                         const clientRef = db.collection('users').doc(userId).collection('clients').doc(String(client.id));
@@ -7731,6 +7994,7 @@
                     if (collection === 'settings') {
                         await db.collection('users').doc(userId).update({
                             categories: App.db.categories,
+                            categoriesLastModified: App.state.categoriesLastModified || new Date(),
                             orderCounter: App.state.orderCounter,
                             orderDrafts: App.db.orderDrafts,
                             lastSync: firebase.firestore.FieldValue.serverTimestamp()
