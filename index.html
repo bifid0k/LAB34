@@ -3189,6 +3189,15 @@
                 const prevMonth = new Date(year, month - 1, 0);
                 const prevMonthDays = prevMonth.getDate();
 
+                for (let i = startDay - 1; i >= 0; i--) {
+                    const dayDiv = App.calendar.createDayElement(
+                        prevMonthDays - i,
+                        true,
+                        new Date(year, month - 1, prevMonthDays - i)
+                    );
+                    grid.appendChild(dayDiv);
+                }
+
                 const ordersByDate = new Map();
 
                 CacheManager.indexes.activeOrders.forEach(order => {
@@ -3211,18 +3220,9 @@
                     }
                 });
 
-                for (let i = startDay - 1; i >= 0; i--) {
-                    const dayDiv = App.calendar.createDayElement(
-                        prevMonthDays - i,
-                        true,
-                        new Date(year, month - 1, prevMonthDays - i)
-                    );
-                    grid.appendChild(dayDiv);
-                }
-
                 for (let day = 1; day <= daysInMonth; day++) {
                     const currentDayDate = new Date(year, month, day);
-                    const dayDiv = App.calendar.createDayElement(day, false, currentDayDate);
+                    const dayDiv = App.calendar.createDayElement(day, false, currentDayDate, ordersByDate);
                     grid.appendChild(dayDiv);
                 }
 
@@ -3239,7 +3239,7 @@
                 }
             },
 
-            createDayElement(dayNumber, isOtherMonth, fullDate) {
+            createDayElement(dayNumber, isOtherMonth, fullDate, ordersByDate) {
                 const dayDiv = document.createElement('div');
                 dayDiv.className = 'calendar-day';
 
@@ -3264,7 +3264,7 @@
                 dayDiv.appendChild(dayNumberDiv);
 
                 if (!isOtherMonth) {
-                    const counts = App.calendar.getPickupReturnCountsForDate(fullDate);
+                    const counts = App.calendar.getPickupReturnCountsForDate(fullDate, ordersByDate);
 
                     if (counts.pickupCount > 0 || counts.returnCount > 0) {
                         const countDiv = document.createElement('div');
@@ -3302,67 +3302,37 @@
                 App.calendar.updateDayEquipment(date);
             },
 
-            getPickupReturnCountsForDate(date) {
-                const dateStr = date.toDateString();
-                let pickupCount = 0;
-                let returnCount = 0;
+            getPickupReturnCountsForDate(date, ordersByDate) {
+                const dateKey = date.toDateString();
+                const dateData = ordersByDate.get(dateKey);
 
-                App.db.orders.forEach(order => {
-                    if (order.status === 'cancelled' || order.status === 'completed') return;
-                    if (!order.clients || !Array.isArray(order.clients)) return;
+                if (!dateData) {
+                    return { pickupCount: 0, returnCount: 0 };
+                }
 
-                    const startDate = new Date(order.startDate);
-                    const endDate = new Date(order.endDate);
-
-                    if (startDate.toDateString() === dateStr) {
-                        order.clients.forEach(client => {
-                            let hasNotReadyEquipment = false;
-                            if (client.equipment && Array.isArray(client.equipment)) {
-                                client.equipment.forEach(eq => {
-                                    if (!order.equipmentStatuses || order.equipmentStatuses[eq.equipmentId] !== 'ready') {
-                                        hasNotReadyEquipment = true;
-                                    }
-                                });
-                            }
-                            if (hasNotReadyEquipment) {
-                                pickupCount++;
-                            }
-                        });
-                    }
-
-                    if (endDate.toDateString() === dateStr) {
-                        order.clients.forEach(client => {
-                            let hasNotReturnedEquipment = false;
-                            if (client.equipment && Array.isArray(client.equipment)) {
-                                client.equipment.forEach(eq => {
-                                    if (!order.equipmentStatuses || order.equipmentStatuses[eq.equipmentId] !== 'returned') {
-                                        hasNotReturnedEquipment = true;
-                                    }
-                                });
-                            }
-                            if (hasNotReturnedEquipment) {
-                                returnCount++;
-                            }
-                        });
-                    }
-                });
-
-                return { pickupCount, returnCount };
+                return {
+                    pickupCount: dateData.pickups,
+                    returnCount: dateData.returns
+                };
             },
 
             updateDayEquipment(date) {
                 const dateStr = date.toDateString();
                 let pickupGroups = {};
                 let returnGroups = {};
+                const dateKey = date.toDateString();
+                const orderIds = CacheManager.indexes.ordersByDate.get(dateKey) || new Set();
 
-                App.db.orders.forEach(order => {
+                orderIds.forEach(orderId => {
+                    const order = CacheManager.indexes.activeOrders.get(orderId);
+                    if (!order) return;
                     if (order.status === 'cancelled' || order.status === 'completed') return;
                     if (!order.clients || !Array.isArray(order.clients)) return;
 
                     const startDate = new Date(order.startDate).toDateString();
                     const endDate = new Date(order.endDate).toDateString();
 
-                    if (startDate === dateStr) {
+                    if (startDate === dateKey) {
                         order.clients.forEach(client => {
                             const clientData = App.db.clients.find(c => c.id === client.clientId);
                             const key = `${order.id}_${client.clientId}`;
@@ -3391,7 +3361,7 @@
                         });
                     }
 
-                    if (endDate === dateStr) {
+                    if (endDate === dateKey) {
                         order.clients.forEach(client => {
                             const clientData = App.db.clients.find(c => c.id === client.clientId);
                             const key = `${order.id}_${client.clientId}`;
@@ -5004,6 +4974,13 @@
                     const orderIndex = App.db.orders.findIndex(o => o.id === App.state.currentEditingOrder);
                     if (orderIndex !== -1) {
                         const oldOrder = App.db.orders[orderIndex];
+                        App.db.orders[orderIndex] = {
+                            ...orderData,
+                            status: oldOrder.status, // Сохраняем реальный статус
+                            createdAt: oldOrder.createdAt, // Сохраняем оригинальную дату создания
+                            equipmentStatuses: oldOrder.equipmentStatuses || {}, // Сохраняем статусы оборудования
+                            lastModified: new Date()
+                        };
                         oldOrder.clients.forEach(client => {
                             client.equipment.forEach(eq => {
                                 const equipmentItem = App.db.equipment.find(e => e.id === eq.equipmentId);
@@ -5032,7 +5009,6 @@
                         });
 
                         orderData.id = App.state.currentEditingOrder;
-                        App.db.orders[orderIndex] = orderData;
                         CacheManager.updateOrderInIndexes(orderData);
 
                         orderData.clients.forEach(client => {
@@ -5065,7 +5041,7 @@
                         App.utils.showNotification('Заказ успешно обновлён!');
                         App.storage.save();
                         if (App.firebase.currentUser && App.firebase.syncEnabled) {
-                            App.firebase.saveToFirebase('orders', orderData);
+                            App.firebase.saveToFirebase('orders', App.db.orders[orderIndex]);
                         }
                     }
                 }
