@@ -7980,6 +7980,14 @@
                 const userId = App.firebase.currentUser.uid;
                 const db = App.firebase.db;
 
+                const getTime = (obj) => {
+                    if (!obj) return 0;
+                    if (obj.toMillis) return obj.toMillis();
+                    if (obj.seconds) return obj.seconds * 1000;
+                    if (obj instanceof Date) return obj.getTime();
+                    return new Date(obj).getTime();
+                };
+
                 try {
                     const settingsDoc = await db.collection('users').doc(userId).get();
                     if (settingsDoc.exists) {
