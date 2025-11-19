@@ -1297,6 +1297,41 @@
             display: block;
         }
 
+        .firebase-sync-indicator {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #fff;
+            padding: 12px 16px;
+            border-radius: 8px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+            display: none;
+            align-items: center;
+            gap: 8px;
+            z-index: 9999;
+            font-size: 13px;
+            transition: all 0.3s;
+        }
+
+        .firebase-sync-indicator.show {
+            display: flex;
+        }
+
+        .firebase-sync-indicator .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid #e9ecef;
+            border-top-color: #5e72e4;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
         @keyframes pulse {
 
             0%,
@@ -2090,6 +2125,11 @@
     <!-- Notifications -->
     <div class="notifications" id="notifications">Система загружена. Добро пожаловать!</div>
 
+    <div class="firebase-sync-indicator" id="firebase-sync-indicator">
+        <div class="spinner"></div>
+        <span id="firebase-sync-text">Синхронизация...</span>
+    </div>
+
     <!-- Order Modal -->
     <div id="order-modal" class="modal">
         <div class="modal-content">
@@ -2579,6 +2619,135 @@
 
         const DAY_HEADERS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
+        const CacheManager = {
+            indexes: {
+                equipmentOrders: new Map(), // equipmentId -> Set
+                clientOrders: new Map(),    // clientId -> Set
+                activeOrders: new Map(),    // orderId -> order (только активные)
+                ordersByDate: new Map()     // dateString -> Set
+            },
+
+            availabilityCache: new Map(),
+            cacheTimestamp: Date.now(),
+
+            debounceTimers: new Map(),
+
+            // Перестроить все индексы
+            rebuildIndexes() {
+                this.indexes.equipmentOrders.clear();
+                this.indexes.clientOrders.clear();
+                this.indexes.activeOrders.clear();
+                this.indexes.ordersByDate.clear();
+
+                App.db.orders.forEach(order => {
+                    if (order.status !== 'cancelled' && order.status !== 'completed') {
+                        this.indexes.activeOrders.set(order.id, order);
+                        this.indexOrderByEquipment(order);
+                        this.indexOrderByClient(order);
+                        this.indexOrderByDate(order);
+                    }
+                });
+
+                console.log('Индексы перестроены:', {
+                    equipment: this.indexes.equipmentOrders.size,
+                    clients: this.indexes.clientOrders.size,
+                    activeOrders: this.indexes.activeOrders.size,
+                    dates: this.indexes.ordersByDate.size
+                });
+            },
+
+            indexOrderByEquipment(order) {
+                order.clients.forEach(client => {
+                    client.equipment.forEach(eq => {
+                        if (!this.indexes.equipmentOrders.has(eq.equipmentId)) {
+                            this.indexes.equipmentOrders.set(eq.equipmentId, new Set());
+                        }
+                        this.indexes.equipmentOrders.get(eq.equipmentId).add(order.id);
+                    });
+                });
+            },
+
+            indexOrderByClient(order) {
+                order.clients.forEach(client => {
+                    if (!this.indexes.clientOrders.has(client.clientId)) {
+                        this.indexes.clientOrders.set(client.clientId, new Set());
+                    }
+                    this.indexes.clientOrders.get(client.clientId).add(order.id);
+                });
+            },
+
+            indexOrderByDate(order) {
+                const startDate = new Date(order.startDate);
+                const endDate = new Date(order.endDate);
+
+                for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+                    const dateKey = d.toDateString();
+                    if (!this.indexes.ordersByDate.has(dateKey)) {
+                        this.indexes.ordersByDate.set(dateKey, new Set());
+                    }
+                    this.indexes.ordersByDate.get(dateKey).add(order.id);
+                }
+            },
+
+            updateOrderInIndexes(order) {
+                this.removeOrderFromIndexes(order.id);
+
+                if (order.status !== 'cancelled' && order.status !== 'completed') {
+                    this.indexes.activeOrders.set(order.id, order);
+                    this.indexOrderByEquipment(order);
+                    this.indexOrderByClient(order);
+                    this.indexOrderByDate(order);
+                }
+
+                this.invalidateAvailabilityCache();
+            },
+
+            removeOrderFromIndexes(orderId) {
+                this.indexes.activeOrders.delete(orderId);
+
+                this.indexes.equipmentOrders.forEach((orderIds, equipmentId) => {
+                    orderIds.delete(orderId);
+                    if (orderIds.size === 0) {
+                        this.indexes.equipmentOrders.delete(equipmentId);
+                    }
+                });
+
+                this.indexes.clientOrders.forEach((orderIds, clientId) => {
+                    orderIds.delete(orderId);
+                    if (orderIds.size === 0) {
+                        this.indexes.clientOrders.delete(clientId);
+                    }
+                });
+
+                this.indexes.ordersByDate.forEach((orderIds, dateKey) => {
+                    orderIds.delete(orderId);
+                    if (orderIds.size === 0) {
+                        this.indexes.ordersByDate.delete(dateKey);
+                    }
+                });
+
+                this.invalidateAvailabilityCache();
+            },
+
+            invalidateAvailabilityCache() {
+                this.availabilityCache.clear();
+                this.cacheTimestamp = Date.now();
+            },
+
+            debounce(key, callback, delay) {
+                if (this.debounceTimers.has(key)) {
+                    clearTimeout(this.debounceTimers.get(key));
+                }
+
+                const timer = setTimeout(() => {
+                    callback();
+                    this.debounceTimers.delete(key);
+                }, delay);
+
+                this.debounceTimers.set(key, timer);
+            }
+        };
+
         App.pwa = {
             isOnline: navigator.onLine,
             isInstalled: false,
@@ -3019,6 +3188,28 @@
 
                 const prevMonth = new Date(year, month - 1, 0);
                 const prevMonthDays = prevMonth.getDate();
+
+                const ordersByDate = new Map();
+
+                CacheManager.indexes.activeOrders.forEach(order => {
+                    const startDate = new Date(order.startDate);
+                    const endDate = new Date(order.endDate);
+
+                    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+                        const dateKey = d.toDateString();
+                        if (!ordersByDate.has(dateKey)) {
+                            ordersByDate.set(dateKey, { pickups: 0, returns: 0 });
+                        }
+
+                        const dateData = ordersByDate.get(dateKey);
+                        if (d.toDateString() === startDate.toDateString()) {
+                            dateData.pickups++;
+                        }
+                        if (d.toDateString() === endDate.toDateString()) {
+                            dateData.returns++;
+                        }
+                    }
+                });
 
                 for (let i = startDay - 1; i >= 0; i--) {
                     const dayDiv = App.calendar.createDayElement(
@@ -4293,6 +4484,7 @@
                     }
 
                     if (App.state.selectedStartDate && App.state.selectedEndDate) {
+                        CacheManager.invalidateAvailabilityCache();
                         App.orders.recheckEquipmentAvailability();
                     }
                 }
@@ -4317,74 +4509,76 @@
             },
 
             recheckEquipmentAvailability() {
-                if (!App.state.selectedStartDate || !App.state.selectedEndDate) return;
+                CacheManager.debounce('recheckEquipment', () => {
+                    if (!App.state.selectedStartDate || !App.state.selectedEndDate) return;
 
-                let hasConflicts = false;
+                    let hasConflicts = false;
 
-                document.querySelectorAll('.client-section').forEach(section => {
-                    section.querySelectorAll('select[data-category]:not([data-category="main-type"])').forEach(select => {
-                        const currentValue = select.value;
-                        const category = select.dataset.category;
-                        const fieldId = select.dataset.fieldId;
+                    document.querySelectorAll('.client-section').forEach(section => {
+                        section.querySelectorAll('select[data-category]:not([data-category="main-type"])').forEach(select => {
+                            const currentValue = select.value;
+                            const category = select.dataset.category;
+                            const fieldId = select.dataset.fieldId;
 
-                        const existingWarning = select.parentElement.querySelector('.availability-warning');
-                        if (existingWarning) existingWarning.remove();
+                            const existingWarning = select.parentElement.querySelector('.availability-warning');
+                            if (existingWarning) existingWarning.remove();
 
-                        const availableEquipment = App.orders.getAvailableForCategory(category, section, fieldId);
-                        const clientId = parseInt(section.querySelector('.client-search').dataset.clientId);
-                        const client = App.db.clients.find(c => c.id === clientId);
+                            const availableEquipment = App.orders.getAvailableForCategory(category, section, fieldId);
+                            const clientId = parseInt(section.querySelector('.client-search').dataset.clientId);
+                            const client = App.db.clients.find(c => c.id === clientId);
 
-                        const recommended = availableEquipment.filter(e =>
-                            App.equipment.getRecommended(client, category).some(r => r.id === e.id)
-                        );
-                        const other = availableEquipment.filter(e => !recommended.some(r => r.id === e.id));
+                            const recommended = availableEquipment.filter(e =>
+                                App.equipment.getRecommended(client, category).some(r => r.id === e.id)
+                            );
+                            const other = availableEquipment.filter(e => !recommended.some(r => r.id === e.id));
 
-                        select.innerHTML = '<option value="">Выберите...</option>';
+                            select.innerHTML = 'Выберите...';
 
-                        if (recommended.length > 0) {
-                            const optgroup = document.createElement('optgroup');
-                            optgroup.label = '➤ Рекомендовано';
-                            recommended.forEach(eq => {
-                                const option = document.createElement('option');
-                                option.value = eq.id;
-                                option.textContent = `✓ ${eq.name} - ${App.orders.getPrice(eq)}`;
-                                optgroup.appendChild(option);
-                            });
-                            select.appendChild(optgroup);
-                        }
+                            if (recommended.length > 0) {
+                                const optgroup = document.createElement('optgroup');
+                                optgroup.label = '➤ Рекомендовано';
+                                recommended.forEach(eq => {
+                                    const option = document.createElement('option');
+                                    option.value = eq.id;
+                                    option.textContent = `✓ ${eq.name} - ${App.orders.getPrice(eq)}`;
+                                    optgroup.appendChild(option);
+                                });
+                                select.appendChild(optgroup);
+                            }
 
-                        if (other.length > 0) {
-                            const optgroup = document.createElement('optgroup');
-                            optgroup.label = 'Все доступные';
-                            other.forEach(eq => {
-                                const option = document.createElement('option');
-                                option.value = eq.id;
-                                option.textContent = `${eq.name} - ${App.orders.getPrice(eq)}`;
-                                optgroup.appendChild(option);
-                            });
-                            select.appendChild(optgroup);
-                        }
+                            if (other.length > 0) {
+                                const optgroup = document.createElement('optgroup');
+                                optgroup.label = 'Все доступные';
+                                other.forEach(eq => {
+                                    const option = document.createElement('option');
+                                    option.value = eq.id;
+                                    option.textContent = `${eq.name} - ${App.orders.getPrice(eq)}`;
+                                    optgroup.appendChild(option);
+                                });
+                                select.appendChild(optgroup);
+                            }
 
-                        if (currentValue && availableEquipment.some(e => e.id == currentValue)) {
-                            select.value = currentValue;
-                        } else if (currentValue) {
-                            hasConflicts = true;
-                            const warning = document.createElement('div');
-                            warning.className = 'availability-warning';
-                            warning.style.cssText = 'color: #dc2626; font-size: 11px; margin-top: 4px;';
-                            warning.textContent = '⚠️ Недоступно на выбранные даты';
-                            select.parentElement.appendChild(warning);
-                            select.style.borderColor = '#dc2626';
-                        }
+                            if (currentValue && availableEquipment.some(e => e.id == currentValue)) {
+                                select.value = currentValue;
+                            } else if (currentValue) {
+                                hasConflicts = true;
+                                const warning = document.createElement('div');
+                                warning.className = 'availability-warning';
+                                warning.style.cssText = 'color: #dc2626; font-size: 11px; margin-top: 4px;';
+                                warning.textContent = '⚠️ Недоступно на выбранные даты';
+                                select.parentElement.appendChild(warning);
+                                select.style.borderColor = '#dc2626';
+                            }
+                        });
                     });
-                });
 
-                App.orders.calculateTotal();
-                App.orders.validateForm();
+                    App.orders.calculateTotal();
+                    App.orders.validateForm();
 
-                if (hasConflicts) {
-                    App.utils.showNotification('⚠️ Некоторое оборудование недоступно на выбранные даты');
-                }
+                    if (hasConflicts) {
+                        App.utils.showNotification('⚠️ Некоторое оборудование недоступно на выбранные даты');
+                    }
+                }, 200);
             },
 
             calculateTotal() {
@@ -4764,6 +4958,7 @@
                             }
 
                             App.db.orders.unshift(orderData);
+                            CacheManager.updateOrderInIndexes(orderData);
 
                             orderData.clients.forEach(client => {
                                 client.equipment.forEach(eq => {
@@ -4838,6 +5033,7 @@
 
                         orderData.id = App.state.currentEditingOrder;
                         App.db.orders[orderIndex] = orderData;
+                        CacheManager.updateOrderInIndexes(orderData);
 
                         orderData.clients.forEach(client => {
                             client.equipment.forEach(eq => {
@@ -4880,6 +5076,7 @@
                 if (order) {
                     if (order.status === 'cancelled') {
                         order.status = 'booked';
+                        CacheManager.updateOrderInIndexes(order);
                         order.lastModified = new Date();
                         order.clients.forEach(client => {
                             client.equipment.forEach(eq => {
@@ -4939,6 +5136,7 @@
                         }
                     } else {
                         order.status = 'cancelled';
+                        CacheManager.removeOrderFromIndexes(orderId);
                         order.lastModified = new Date();
                         order.clients.forEach(client => {
                             client.equipment.forEach(eq => {
@@ -5037,6 +5235,7 @@
 
                 if (allReturned && shouldBePaid && order.status !== 'completed') {
                     order.status = 'completed';
+                    CacheManager.removeOrderFromIndexes(orderId);
                     order.clients.forEach(client => {
                         client.equipment.forEach(eq => {
                             const item = App.db.equipment.find(e => e.id === eq.equipmentId);
@@ -5105,6 +5304,7 @@
 
                         if (allReturned && isPaid) {
                             order.status = 'completed';
+                            CacheManager.removeOrderFromIndexes(orderId);
                             order.clients.forEach(client => {
                                 client.equipment.forEach(eq => {
                                     const item = App.db.equipment.find(e => e.id === eq.equipmentId);
@@ -5458,18 +5658,19 @@
                 }
 
                 container.innerHTML = filteredClients.map(client => {
-                    const clientOrders = App.db.orders.filter(order => {
-                        if (!order.clients || !Array.isArray(order.clients)) {
-                            return false;
-                        }
-                        return order.clients.some(c => c.clientId === client.id);
-                    }).sort((a, b) => {
-                        const dateA = a.createdAt ? new Date(a.createdAt) : new Date(0);
-                        const dateB = b.createdAt ? new Date(b.createdAt) : new Date(0);
-                        return dateB - dateA;
-                    });
+                    const clientOrderIds = CacheManager.indexes.clientOrders.get(client.id) || [];
 
-                    const lastOrder = clientOrders[0];
+                    let lastOrder = null;
+                    if (clientOrderIds.size > 0) {
+                        const clientOrders = Array.from(clientOrderIds)
+                            .map(orderId => CacheManager.indexes.activeOrders.get(orderId))
+                            .filter(o => o)
+                            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+                        if (clientOrders.length > 0) {
+                            lastOrder = clientOrders[0];
+                        }
+                    }
 
                     return `
                         <div class="list-item client-item" onclick="App.clients.openModal(${client.id})">
@@ -5630,15 +5831,10 @@
                     const clientId = App.state.currentEditingClient;
 
                     // Проверяем, используется ли клиент в активных заказах
-                    const isUsedInOrders = App.db.orders.some(order => {
-                        if (order.status === 'cancelled' || order.status === 'completed') {
-                            return false;
-                        }
-                        return order.clients.some(client => client.clientId === clientId);
-                    });
+                    const clientOrderIds = CacheManager.indexes.clientOrders.get(App.state.currentEditingClient) || [];
 
-                    if (isUsedInOrders) {
-                        alert('⚠️ Невозможно удалить клиента.\n\nЭтот клиент участвует в активных заказах.\nСначала завершите или отмените эти заказы.');
+                    if (clientOrderIds.size > 0) {
+                        alert('Невозможно удалить клиента, так как у него есть активные заказы');
                         return;
                     }
 
@@ -6234,59 +6430,58 @@
             },
 
             checkAvailability(equipmentId, startDate, endDate, excludeOrderId = null, excludeFieldId = null) {
-                const equipmentItem = App.db.equipment.find(e => e.id === equipmentId);
-                if (equipmentItem && (equipmentItem.status === 'sold' || equipmentItem.status === 'damaged')) {
-                    return false;
-                }
+                if (!startDate || !endDate) return true;
 
-                const currentOrderSelects = document.querySelectorAll('.client-section select[data-category]');
-                let usedInCurrentOrder = false;
-                currentOrderSelects.forEach(select => {
-                    if (select.dataset.fieldId === excludeFieldId) return;
-                    if (parseInt(select.value) === equipmentId) {
-                        usedInCurrentOrder = true;
-                    }
-                });
-                if (usedInCurrentOrder) return false;
+                const cacheKey = `${equipmentId}_${startDate.getTime()}_${endDate.getTime()}_${excludeOrderId || 'null'}_${excludeFieldId || 'null'}`;
+
+                if (CacheManager.availabilityCache.has(cacheKey)) {
+                    return CacheManager.availabilityCache.get(cacheKey);
+                }
 
                 const pickupTime = document.getElementById('pickup-time')?.value || '10:00';
                 const returnTime = document.getElementById('return-time')?.value || '18:00';
 
-                const newStart = new Date(startDate);
+                const requestStart = new Date(startDate);
                 const [startHour, startMin] = pickupTime.split(':').map(Number);
-                newStart.setHours(startHour, startMin, 0, 0);
+                requestStart.setHours(startHour, startMin, 0, 0);
 
-                const newEnd = new Date(endDate);
+                const requestEnd = new Date(endDate);
                 const [endHour, endMin] = returnTime.split(':').map(Number);
-                newEnd.setHours(endHour, endMin, 0, 0);
+                requestEnd.setHours(endHour, endMin, 0, 0);
 
-                const newEndWithBuffer = new Date(newEnd.getTime() + App.state.bufferHours * 60 * 60 * 1000);
+                const bufferMs = App.state.bufferHours * 60 * 60 * 1000;
+                requestStart.setTime(requestStart.getTime() - bufferMs);
+                requestEnd.setTime(requestEnd.getTime() + bufferMs);
 
-                return !App.db.orders.some(order => {
-                    if (order.status === 'cancelled' || order.status === 'completed' || order.id === excludeOrderId) {
+                const orderIds = CacheManager.indexes.equipmentOrders.get(equipmentId);
+
+                if (!orderIds || orderIds.size === 0) {
+                    CacheManager.availabilityCache.set(cacheKey, true);
+                    return true;
+                }
+
+                for (const orderId of orderIds) {
+                    if (excludeOrderId && orderId === excludeOrderId) continue;
+
+                    const order = CacheManager.indexes.activeOrders.get(orderId);
+                    if (!order) continue;
+
+                    const orderStart = new Date(order.startDate);
+                    const [orderStartHour, orderStartMin] = (order.pickupTime || '10:00').split(':').map(Number);
+                    orderStart.setHours(orderStartHour, orderStartMin, 0, 0);
+
+                    const orderEnd = new Date(order.endDate);
+                    const [orderEndHour, orderEndMin] = (order.returnTime || '18:00').split(':').map(Number);
+                    orderEnd.setHours(orderEndHour, orderEndMin, 0, 0);
+
+                    if (requestStart < orderEnd && requestEnd > orderStart) {
+                        CacheManager.availabilityCache.set(cacheKey, false);
                         return false;
                     }
+                }
 
-                    const isEquipmentUsed = order.clients.some(client =>
-                        client.equipment.some(eq => eq.equipmentId === equipmentId)
-                    );
-
-                    if (!isEquipmentUsed) return false;
-
-                    const existingStart = new Date(order.startDate);
-                    const [existStartHour, existStartMin] = (order.pickupTime || '10:00').split(':').map(Number);
-                    existingStart.setHours(existStartHour, existStartMin, 0, 0);
-
-                    const existingEnd = new Date(order.endDate);
-                    const [existEndHour, existEndMin] = (order.returnTime || '18:00').split(':').map(Number);
-                    existingEnd.setHours(existEndHour, existEndMin, 0, 0);
-
-                    const existingEndWithBuffer = new Date(existingEnd.getTime() + App.state.bufferHours * 60 * 60 * 1000);
-
-                    const noConflict = (newStart >= existingEndWithBuffer) || (newEndWithBuffer <= existingStart);
-
-                    return !noConflict;
-                });
+                CacheManager.availabilityCache.set(cacheKey, true);
+                return true;
             },
 
             getRecommended(client, categoryId) {
@@ -7262,6 +7457,7 @@
 
             updateBufferHours(value) {
                 App.state.bufferHours = parseInt(value) || 2;
+                CacheManager.invalidateAvailabilityCache();
                 localStorage.setItem('bufferHours', App.state.bufferHours);
                 App.utils.showNotification(`Буфер установлен: ${App.state.bufferHours} ч`);
             }
@@ -7332,6 +7528,8 @@
 
                         App.storage.save();
 
+                        CacheManager.rebuildIndexes();
+
                         if (App.firebase.currentUser && App.firebase.syncEnabled) {
                             App.firebase.uploadInitialData();
                         }
@@ -7369,6 +7567,8 @@
                 App.db.orders = [];
                 App.db.orderDrafts = [];
                 App.state.orderCounter = 1;
+
+                CacheManager.rebuildIndexes();
 
                 App.data.initializeCategories();
                 App.data.initializePriceCategories();
@@ -7439,6 +7639,10 @@
 
         // Firebase Module
         App.firebase = {
+            pendingWrites: new Map(),
+            writeBatchTimer: null,
+            isProcessingOwnChange: false,
+
             init() {
                 const firebaseConfig = {
                     apiKey: "AIzaSyBeVWYjvGiFvbs3ovqLYHZAyQqz8ArFj5E",
@@ -7450,7 +7654,6 @@
                 };
 
                 try {
-                    // Инициализируем Firebase с конфигурацией
                     firebase.initializeApp(firebaseConfig);
                     App.firebase.db = firebase.firestore();
                     App.firebase.auth = firebase.auth();
@@ -7464,18 +7667,14 @@
                             }
                         });
 
-                    // Проверяем авторизацию
                     App.firebase.auth.onAuthStateChanged(user => {
                         if (user) {
                             App.firebase.currentUser = user;
                             App.firebase.checkSyncEnabled();
-                            console.log('Firebase: User authenticated');
                         } else {
                             App.firebase.currentUser = null;
                             App.firebase.syncEnabled = false;
-                            console.log('Firebase: No user authenticated');
                         }
-                        // Обновляем UI после проверки авторизации
                         App.firebase.updateAuthUI();
                     });
                 } catch (error) {
@@ -7497,7 +7696,7 @@
                 App.firebase.auth.signInWithPopup(provider)
                     .then((result) => {
                         App.firebase.currentUser = result.user;
-                        App.utils.showNotification(`Вы вошли как ${App.firebase.currentUser.email} `);
+                        App.utils.showNotification(`Вы вошли как ${App.firebase.currentUser.email}`);
                         App.firebase.updateAuthUI();
                         App.firebase.enableSync();
                         App.storage.save();
@@ -7509,6 +7708,8 @@
             },
 
             signOut() {
+                App.firebase.flushPendingWrites();
+
                 App.firebase.auth.signOut()
                     .then(() => {
                         App.firebase.currentUser = null;
@@ -7527,33 +7728,33 @@
 
                 if (App.firebase.currentUser) {
                     authContainer.innerHTML = `
-                 <div style = "padding: 16px; background: #e7f5ff; border-radius: 8px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <div style="font-weight: 500; margin-bottom: 4px;">Вы вошли как:</div>
-                        <div style="font-size: 14px; color: #0c63e4;">${App.firebase.currentUser.email}</div>
-                        <div style="font-size: 12px; color: #6c757d; margin-top: 4px;">
-                            Синхронизация: <span style="color: #2dce89;">активна</span>
-                        </div>
-                    </div>
-                    <button class="btn btn-danger" onclick="App.firebase.signOut()">
-                        <span class="material-icons">logout</span>
-                        Выйти
-                    </button>
-                </div>
-                        </div >
+                
+                    
+                        
+                            Вы вошли как:
+                            ${App.firebase.currentUser.email}
+                            
+                                Синхронизация: активна
+                            
+                        
+                        
+                            logout
+                            Выйти
+                        
+                    
+                
             `;
                 } else {
                     authContainer.innerHTML = `
-                            <div style = "padding: 16px; background: #f8f9fa; border-radius: 8px;">
-                            <p style="margin-bottom: 12px; color: #6c757d;">
-                                Войдите для синхронизации данных между устройствами
-                            </p>
-                            <button class="btn" onclick="App.firebase.signInWithGoogle()">
-                                <span class="material-icons">login</span>
-                                Войти через Google
-                            </button>
-                        </div >
+                
+                    
+                        Войдите для синхронизации данных между устройствами
+                    
+                    
+                        login
+                        Войти через Google
+                    
+                
             `;
                 }
             },
@@ -7562,12 +7763,9 @@
                 if (!App.firebase.currentUser || App.firebase.syncEnabled) return;
 
                 App.firebase.syncEnabled = true;
-                App.firebase.initialLoadComplete = false;  // Сброс флага
+                App.firebase.initialLoadComplete = false;
 
                 App.firebase.loadFromFirebase().then(() => {
-                    return App.firebase.uploadInitialData();
-                }).then(() => {
-                    // Задержка перед подпиской, чтобы данные успели синхронизироваться
                     setTimeout(() => {
                         App.firebase.initialLoadComplete = true;
                         App.firebase.setupRealtimeListeners();
@@ -7576,8 +7774,10 @@
             },
 
             disableSync() {
+                App.firebase.flushPendingWrites();
+
                 App.firebase.syncEnabled = false;
-                App.firebase.initialLoadComplete = false;  // ДОБАВИТЬ
+                App.firebase.initialLoadComplete = false;
 
                 if (App.firebase.unsubscribers && App.firebase.unsubscribers.length > 0) {
                     App.firebase.unsubscribers.forEach(unsubscribe => unsubscribe());
@@ -7587,10 +7787,18 @@
 
             setupRealtimeListeners() {
                 if (!App.firebase.currentUser) return;
-
                 if (!App.firebase.unsubscribers) {
                     App.firebase.unsubscribers = [];
                 }
+
+                const userId = App.firebase.currentUser.uid;
+                const db = App.firebase.db;
+
+                const getMinTimestamp = () => {
+                    const minDate = new Date();
+                    minDate.setDate(minDate.getDate() - 30);
+                    return firebase.firestore.Timestamp.fromDate(minDate);
+                };
 
                 const getTime = (obj) => {
                     if (!obj) return 0;
@@ -7600,15 +7808,13 @@
                     return new Date(obj).getTime();
                 };
 
-                const userId = App.firebase.currentUser.uid;
-                const db = App.firebase.db;
-
-                // Слушатель для клиентов
                 const clientsUnsubscribe = db.collection('users').doc(userId).collection('clients')
+                    .where('lastModified', '>=', getMinTimestamp())
                     .onSnapshot((snapshot) => {
-                        if (!App.firebase.initialLoadComplete) {
-                            return;
-                        }
+                        if (!App.firebase.initialLoadComplete || App.firebase.isProcessingOwnChange) return;
+
+                        let hasChanges = false;
+
                         snapshot.docChanges().forEach((change) => {
                             if (change.type === 'added' || change.type === 'modified') {
                                 const data = change.doc.data();
@@ -7617,274 +7823,305 @@
                                 if (index !== -1) {
                                     const localTime = getTime(App.db.clients[index].lastModified);
                                     const cloudTime = getTime(data.lastModified);
-                                    if (!App.db.clients[index].lastModified || cloudTime > localTime) {
+
+                                    if (cloudTime > localTime) {
                                         App.db.clients[index] = data;
+                                        hasChanges = true;
                                     }
                                 } else {
                                     App.db.clients.push(data);
+                                    hasChanges = true;
                                 }
                             }
                             if (change.type === 'removed') {
                                 const data = change.doc.data();
                                 App.db.clients = App.db.clients.filter(c => c.id !== data.id);
+                                hasChanges = true;
                             }
                         });
 
-                        App.storage.save();
-                        console.log('Rendering clients');
-                        App.clients.render();
+                        if (hasChanges) {
+                            App.storage.save();
+                            App.clients.render();
+                        }
                     });
                 App.firebase.unsubscribers.push(clientsUnsubscribe);
 
-                // Слушатель для оборудования
                 const equipmentUnsubscribe = db.collection('users').doc(userId).collection('equipment')
+                    .where('lastModified', '>=', getMinTimestamp())
                     .onSnapshot((snapshot) => {
-                        if (!App.firebase.initialLoadComplete) {
-                            return;
-                        }
+                        if (!App.firebase.initialLoadComplete || App.firebase.isProcessingOwnChange) return;
+
+                        let hasChanges = false;
+
                         snapshot.docChanges().forEach((change) => {
                             if (change.type === 'added' || change.type === 'modified') {
                                 const data = change.doc.data();
                                 const index = App.db.equipment.findIndex(e => e.id === data.id);
+
                                 if (index !== -1) {
                                     const localTime = getTime(App.db.equipment[index].lastModified);
                                     const cloudTime = getTime(data.lastModified);
+
                                     if (cloudTime > localTime) {
                                         App.db.equipment[index] = data;
+                                        hasChanges = true;
                                     }
                                 } else {
                                     App.db.equipment.push(data);
+                                    hasChanges = true;
                                 }
                             }
                             if (change.type === 'removed') {
                                 const data = change.doc.data();
                                 App.db.equipment = App.db.equipment.filter(e => e.id !== data.id);
+                                hasChanges = true;
                             }
                         });
-                        App.equipment.render();
-                        App.storage.save();
+
+                        if (hasChanges) {
+                            App.equipment.render();
+                            App.storage.save();
+                        }
                     });
                 App.firebase.unsubscribers.push(equipmentUnsubscribe);
 
-                // Слушатель для заказов
                 const ordersUnsubscribe = db.collection('users').doc(userId).collection('orders')
+                    .where('lastModified', '>=', getMinTimestamp())
                     .onSnapshot((snapshot) => {
-                        if (!App.firebase.initialLoadComplete) {
-                            return;
-                        }
+                        if (!App.firebase.initialLoadComplete || App.firebase.isProcessingOwnChange) return;
+
+                        let hasChanges = false;
+
                         snapshot.docChanges().forEach((change) => {
                             if (change.type === 'added' || change.type === 'modified') {
                                 const data = change.doc.data();
-                                // Конвертируем Timestamp в Date
                                 data.startDate = data.startDate.toDate();
                                 data.endDate = data.endDate.toDate();
                                 data.createdAt = data.createdAt.toDate();
 
                                 const index = App.db.orders.findIndex(o => o.id === data.id);
+
                                 if (index !== -1) {
                                     const localTime = getTime(App.db.orders[index].lastModified);
                                     const cloudTime = getTime(data.lastModified);
+
                                     if (cloudTime > localTime) {
                                         App.db.orders[index] = data;
+                                        CacheManager.updateOrderInIndexes(data);
+                                        hasChanges = true;
                                     }
                                 } else {
                                     App.db.orders.push(data);
+                                    CacheManager.updateOrderInIndexes(data);
+                                    hasChanges = true;
                                 }
                             }
                             if (change.type === 'removed') {
                                 const data = change.doc.data();
                                 App.db.orders = App.db.orders.filter(o => o.id !== data.id);
+                                CacheManager.removeOrderFromIndexes(data.id);
+                                hasChanges = true;
                             }
                         });
-                        App.orders.render();
-                        App.calendar.render(App.state.currentDate);
-                        App.calendar.updateSelectedDatePanel(App.state.selectedDate);
-                        App.storage.save();
+
+                        if (hasChanges) {
+                            App.orders.render();
+                            App.calendar.render(App.state.currentDate);
+                            App.calendar.updateSelectedDatePanel(App.state.selectedDate);
+                            App.storage.save();
+                        }
                     });
                 App.firebase.unsubscribers.push(ordersUnsubscribe);
 
-                // Слушатель для ценовых категорий
                 const priceCategoriesUnsubscribe = db.collection('users').doc(userId).collection('priceCategories')
                     .onSnapshot((snapshot) => {
-                        if (!App.firebase.initialLoadComplete) {
-                            return;
-                        }
+                        if (!App.firebase.initialLoadComplete || App.firebase.isProcessingOwnChange) return;
+
+                        let hasChanges = false;
+
                         snapshot.docChanges().forEach((change) => {
                             if (change.type === 'added' || change.type === 'modified') {
                                 const data = change.doc.data();
                                 const index = App.db.priceCategories.findIndex(pc => pc.id === data.id);
+
                                 if (index !== -1) {
                                     App.db.priceCategories[index] = data;
                                 } else {
                                     App.db.priceCategories.push(data);
                                 }
+                                hasChanges = true;
                             }
                             if (change.type === 'removed') {
                                 const data = change.doc.data();
                                 App.db.priceCategories = App.db.priceCategories.filter(pc => pc.id !== data.id);
+                                hasChanges = true;
                             }
                         });
-                        App.priceCategories.render();
-                        App.storage.save();
-                    });
-                App.firebase.unsubscribers.push(priceCategoriesUnsubscribe);
 
-                // Слушатель для настроек (categories, orderCounter)
-                const settingsUnsubscribe = db.collection('users').doc(userId)
-                    .onSnapshot((doc) => {
-                        if (!App.firebase.initialLoadComplete) {
-                            return;
-                        }
-                        if (doc.exists) {
-                            const data = doc.data();
-                            if (data.categories) App.db.categories = data.categories;
-                            if (data.orderCounter) App.state.orderCounter = data.orderCounter;
-                            if (data.orderDrafts) App.db.orderDrafts = data.orderDrafts;
-                            App.categories.updateTabs();
+                        if (hasChanges) {
+                            App.priceCategories.render();
                             App.storage.save();
                         }
                     });
+                App.firebase.unsubscribers.push(priceCategoriesUnsubscribe);
+
+                const settingsUnsubscribe = db.collection('users').doc(userId)
+                    .onSnapshot((doc) => {
+                        if (!App.firebase.initialLoadComplete || App.firebase.isProcessingOwnChange) return;
+
+                        if (doc.exists) {
+                            const data = doc.data();
+                            let hasChanges = false;
+
+                            if (data.categories) {
+                                App.db.categories = data.categories;
+                                hasChanges = true;
+                            }
+                            if (data.orderCounter) {
+                                App.state.orderCounter = data.orderCounter;
+                            }
+                            if (data.orderDrafts) {
+                                App.db.orderDrafts = data.orderDrafts;
+                            }
+
+                            if (hasChanges) {
+                                App.categories.updateTabs();
+                                App.storage.save();
+                            }
+                        }
+                    });
                 App.firebase.unsubscribers.push(settingsUnsubscribe);
-                console.log('✅ All listeners created, unsubscribers count:', App.firebase.unsubscribers.length);
             },
 
             async loadFromFirebase() {
-                if (!App.firebase.currentUser) return;
+                if (!App.firebase.currentUser || !App.firebase.db) return;
 
                 const userId = App.firebase.currentUser.uid;
                 const db = App.firebase.db;
-                App.utils.showNotification('Загрузка данных из облака...');
 
                 try {
-                    // Загружаем настройки
                     const settingsDoc = await db.collection('users').doc(userId).get();
                     if (settingsDoc.exists) {
                         const data = settingsDoc.data();
 
-                        // Умная загрузка категорий с проверкой lastModified
                         if (data.categories) {
                             const firebaseCategoriesModified = data.categoriesLastModified ?
                                 (data.categoriesLastModified.toDate ? data.categoriesLastModified.toDate() : new Date(data.categoriesLastModified)) :
                                 null;
                             const localCategoriesModified = App.state.categoriesLastModified || null;
 
-                            // Если в Firebase категории новее или локальных нет - загружаем из Firebase
                             if (!localCategoriesModified ||
                                 (firebaseCategoriesModified && firebaseCategoriesModified > localCategoriesModified)) {
                                 App.db.categories = data.categories;
                                 App.state.categoriesLastModified = firebaseCategoriesModified;
                             }
-                            // Иначе оставляем локальные (они новее)
                         }
 
                         if (data.orderCounter) App.state.orderCounter = data.orderCounter;
                         if (data.orderDrafts) App.db.orderDrafts = data.orderDrafts;
                     }
 
-                    // Загружаем клиентов
-                    const clientsSnapshot = await db.collection('users').doc(userId).collection('clients').get();
-                    const firebaseClients = [];
-                    clientsSnapshot.forEach(doc => {
-                        firebaseClients.push(doc.data());
-                    });
+                    const thirtyDaysAgo = new Date();
+                    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                    const minTimestamp = firebase.firestore.Timestamp.fromDate(thirtyDaysAgo);
 
-                    // Merge с локальными данными
-                    firebaseClients.forEach(fbItem => {
+                    const clientsSnapshot = await db.collection('users').doc(userId).collection('clients')
+                        .where('lastModified', '>=', minTimestamp)
+                        .get();
+
+                    clientsSnapshot.forEach(doc => {
+                        const fbItem = doc.data();
                         const localIndex = App.db.clients.findIndex(c => c.id === fbItem.id);
 
                         if (localIndex === -1) {
-                            // Новый элемент из облака
                             App.db.clients.push(fbItem);
                         } else {
-                            const localItem = App.db.clients[localIndex];
-                            // Сравниваем lastModified
-                            if (!localItem.lastModified || (fbItem.lastModified && fbItem.lastModified.toMillis && fbItem.lastModified.toMillis() > (localItem.lastModified.toMillis ? localItem.lastModified.toMillis() : new Date(localItem.lastModified).getTime()))) {
-                                // Облачный новее - заменяем
+                            const localTime = App.db.clients[localIndex].lastModified ?
+                                new Date(App.db.clients[localIndex].lastModified).getTime() : 0;
+                            const cloudTime = fbItem.lastModified.toMillis();
+
+                            if (cloudTime > localTime) {
                                 App.db.clients[localIndex] = fbItem;
                             }
-                            // Если локальный новее - ничего не делаем, uploadInitialData загрузит его в облако
                         }
                     });
 
-                    // Загружаем локальные элементы, которых нет в облаке
-                    App.db.clients.forEach(localItem => {
-                        const fbExists = firebaseClients.some(fb => fb.id === localItem.id);
-                        if (!fbExists && localItem.lastModified) {
-                            // Есть только локально - загрузим в облако позже через uploadInitialData
-                        }
-                    });
+                    const equipmentSnapshot = await db.collection('users').doc(userId).collection('equipment')
+                        .where('lastModified', '>=', minTimestamp)
+                        .get();
 
-                    // Загружаем оборудование
-                    const equipmentSnapshot = await db.collection('users').doc(userId).collection('equipment').get();
-                    const firebaseEquipment = [];
                     equipmentSnapshot.forEach(doc => {
-                        firebaseEquipment.push(doc.data());
-                    });
-
-                    // Merge с локальными данными
-                    firebaseEquipment.forEach(fbItem => {
+                        const fbItem = doc.data();
                         const localIndex = App.db.equipment.findIndex(e => e.id === fbItem.id);
 
                         if (localIndex === -1) {
                             App.db.equipment.push(fbItem);
                         } else {
-                            const localItem = App.db.equipment[localIndex];
-                            if (!localItem.lastModified || (fbItem.lastModified && fbItem.lastModified.toMillis && fbItem.lastModified.toMillis() > (localItem.lastModified.toMillis ? localItem.lastModified.toMillis() : new Date(localItem.lastModified).getTime()))) {
+                            const localTime = App.db.equipment[localIndex].lastModified ?
+                                new Date(App.db.equipment[localIndex].lastModified).getTime() : 0;
+                            const cloudTime = fbItem.lastModified.toMillis();
+
+                            if (cloudTime > localTime) {
                                 App.db.equipment[localIndex] = fbItem;
                             }
                         }
                     });
 
-                    // Загружаем заказы
-                    const ordersSnapshot = await db.collection('users').doc(userId).collection('orders').get();
-                    const firebaseOrders = [];
-                    ordersSnapshot.forEach(doc => {
-                        const data = doc.data();
-                        // Конвертируем Timestamp в Date
-                        data.startDate = data.startDate.toDate();
-                        data.endDate = data.endDate.toDate();
-                        data.createdAt = data.createdAt.toDate();
-                        firebaseOrders.push(data);
-                    });
+                    const ninetyDaysAgo = new Date();
+                    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+                    const ordersMinTimestamp = firebase.firestore.Timestamp.fromDate(ninetyDaysAgo);
 
-                    // Merge с локальными данными
-                    firebaseOrders.forEach(fbItem => {
+                    const ordersSnapshot = await db.collection('users').doc(userId).collection('orders')
+                        .where('lastModified', '>=', ordersMinTimestamp)
+                        .get();
+
+                    ordersSnapshot.forEach(doc => {
+                        const fbItem = doc.data();
+                        fbItem.startDate = fbItem.startDate.toDate();
+                        fbItem.endDate = fbItem.endDate.toDate();
+                        fbItem.createdAt = fbItem.createdAt.toDate();
+
                         const localIndex = App.db.orders.findIndex(o => o.id === fbItem.id);
 
                         if (localIndex === -1) {
                             App.db.orders.push(fbItem);
                         } else {
-                            const localItem = App.db.orders[localIndex];
-                            if (!localItem.lastModified || (fbItem.lastModified && fbItem.lastModified.toMillis && fbItem.lastModified.toMillis() > (localItem.lastModified.toMillis ? localItem.lastModified.toMillis() : new Date(localItem.lastModified).getTime()))) {
+                            const localTime = App.db.orders[localIndex].lastModified ?
+                                new Date(App.db.orders[localIndex].lastModified).getTime() : 0;
+                            const cloudTime = fbItem.lastModified.toMillis();
+
+                            if (cloudTime > localTime) {
                                 App.db.orders[localIndex] = fbItem;
                             }
                         }
                     });
 
-                    // Загружаем ценовые категории
                     const priceCategoriesSnapshot = await db.collection('users').doc(userId).collection('priceCategories').get();
-                    const firebasePriceCategories = [];
-                    priceCategoriesSnapshot.forEach(doc => {
-                        firebasePriceCategories.push(doc.data());
-                    });
 
-                    // Merge с локальными данными
-                    firebasePriceCategories.forEach(fbItem => {
+                    priceCategoriesSnapshot.forEach(doc => {
+                        const fbItem = doc.data();
                         const localIndex = App.db.priceCategories.findIndex(pc => pc.id === fbItem.id);
 
                         if (localIndex === -1) {
                             App.db.priceCategories.push(fbItem);
                         } else {
-                            const localItem = App.db.priceCategories[localIndex];
-                            if (!localItem.lastModified || (fbItem.lastModified && fbItem.lastModified.toMillis && fbItem.lastModified.toMillis() > (localItem.lastModified.toMillis ? localItem.lastModified.toMillis() : new Date(localItem.lastModified).getTime()))) {
-                                App.db.priceCategories[localIndex] = fbItem;
+                            if (fbItem.lastModified) {
+                                const localTime = App.db.priceCategories[localIndex].lastModified ?
+                                    new Date(App.db.priceCategories[localIndex].lastModified).getTime() : 0;
+                                const cloudTime = fbItem.lastModified.toMillis();
+
+                                if (cloudTime > localTime) {
+                                    App.db.priceCategories[localIndex] = fbItem;
+                                }
                             }
                         }
                     });
 
-                    App.utils.showNotification('Данные загружены из облака');
+                    CacheManager.rebuildIndexes();
 
-                    // Обновляем UI
+                    App.utils.showNotification('Данные синхронизированы');
+
                     App.calendar.render(App.state.currentDate);
                     App.calendar.updateSelectedDatePanel(App.state.selectedDate);
                     App.orders.render();
@@ -7899,115 +8136,93 @@
                 }
             },
 
-            async uploadInitialData() {
-                if (!App.firebase.currentUser) return;
+            updateSyncIndicator() {
+                const indicator = document.getElementById('firebase-sync-indicator');
+                const text = document.getElementById('firebase-sync-text');
 
-                const userId = App.firebase.currentUser.uid;
-                const batch = App.firebase.db.batch();
-                const db = App.firebase.db;
+                if (!indicator || !text) return;
 
-                try {
-                    // Всегда синхронизируем локальные данные с облаком
-                    App.utils.showNotification('Синхронизация локальных данных...');
+                const count = App.firebase.pendingWrites.size;
 
-                    // Настройки
-                    const settingsDoc = await db.collection('users').doc(userId).get();
-                    let shouldUploadCategories = true;
-
-                    if (settingsDoc.exists && settingsDoc.data().categoriesLastModified) {
-                        const firebaseModified = settingsDoc.data().categoriesLastModified.toDate();
-                        const localModified = App.state.categoriesLastModified || new Date(0);
-
-                        // Загружаем только если локальные категории новее
-                        shouldUploadCategories = localModified >= firebaseModified;
-                    }
-
-                    const settingsData = {
-                        orderCounter: App.state.orderCounter,
-                        orderDrafts: App.db.orderDrafts,
-                        lastSync: firebase.firestore.FieldValue.serverTimestamp()
-                    };
-
-                    if (shouldUploadCategories) {
-                        settingsData.categories = App.db.categories;
-                        settingsData.categoriesLastModified = App.state.categoriesLastModified || new Date();
-                    }
-
-                    batch.set(db.collection('users').doc(userId), settingsData, { merge: true });
-                    // Клиенты
-                    App.db.clients.forEach(client => {
-                        const clientRef = db.collection('users').doc(userId).collection('clients').doc(String(client.id));
-                        batch.set(clientRef, {
-                            ...client,
-                            lastModified: client.lastModified || firebase.firestore.FieldValue.serverTimestamp()
-                        }, { merge: true });
-                    });
-
-                    // Оборудование
-                    App.db.equipment.forEach(item => {
-                        const equipmentRef = db.collection('users').doc(userId).collection('equipment').doc(String(item.id));
-                        batch.set(equipmentRef, {
-                            ...item,
-                            lastModified: item.lastModified || firebase.firestore.FieldValue.serverTimestamp()
-                        }, { merge: true });
-                    });
-
-                    // Заказы
-                    App.db.orders.forEach(order => {
-                        const orderRef = db.collection('users').doc(userId).collection('orders').doc(String(order.id));
-                        batch.set(orderRef, {
-                            ...order,
-                            lastModified: order.lastModified || firebase.firestore.FieldValue.serverTimestamp()
-                        }, { merge: true });
-                    });
-
-                    // Ценовые категории
-                    App.db.priceCategories.forEach(category => {
-                        const categoryRef = db.collection('users').doc(userId).collection('priceCategories').doc(String(category.id));
-                        batch.set(categoryRef, {
-                            ...category,
-                            lastModified: category.lastModified || firebase.firestore.FieldValue.serverTimestamp()
-                        }, { merge: true });
-                    });
-
-                    await batch.commit();
-                    App.utils.showNotification('Данные успешно синхронизированы');
-                } catch (error) {
-                    console.error('Ошибка первичной синхронизации:', error);
-                    App.utils.showNotification('Ошибка синхронизации');
+                if (count > 0) {
+                    indicator.classList.add('show');
+                    text.textContent = `Несохранённо: ${count}`;
+                } else {
+                    indicator.classList.remove('show');
                 }
             },
 
             async saveToFirebase(collection, data) {
                 if (!App.firebase.currentUser || !App.firebase.syncEnabled) return;
 
-                if (!App.pwa.isOnline) {
-                    App.pwa.needsSync = true;
-                    console.log('Офлайн: данные будут синхронизированы позже');
-                    return;
+                const key = `${collection}_${data.id}`;
+                App.firebase.pendingWrites.set(key, { collection, data });
+
+                App.firebase.updateSyncIndicator();
+
+                if (App.firebase.writeBatchTimer) {
+                    clearTimeout(App.firebase.writeBatchTimer);
                 }
+
+                App.firebase.writeBatchTimer = setTimeout(() => {
+                    App.firebase.flushPendingWrites();
+                }, 2000);
+            },
+
+            async flushPendingWrites() {
+                if (!App.firebase.currentUser || !App.firebase.syncEnabled) return;
+                if (App.firebase.pendingWrites.size === 0) return;
 
                 const userId = App.firebase.currentUser.uid;
                 const db = App.firebase.db;
 
+                App.firebase.isProcessingOwnChange = true;
+
                 try {
-                    if (collection === 'settings') {
-                        await db.collection('users').doc(userId).update({
-                            categories: App.db.categories,
-                            categoriesLastModified: App.state.categoriesLastModified || new Date(),
-                            orderCounter: App.state.orderCounter,
-                            orderDrafts: App.db.orderDrafts,
-                            lastSync: firebase.firestore.FieldValue.serverTimestamp()
-                        });
-                    } else {
-                        const docRef = db.collection('users').doc(userId).collection(collection).doc(String(data.id));
-                        await docRef.set({
-                            ...data,
-                            lastModified: firebase.firestore.FieldValue.serverTimestamp()
-                        });
-                    }
+                    const batch = db.batch();
+                    let operationCount = 0;
+
+                    App.firebase.pendingWrites.forEach(({ collection, data }) => {
+                        if (collection === 'settings') {
+                            const settingsRef = db.collection('users').doc(userId);
+                            batch.set(settingsRef, {
+                                categories: App.db.categories,
+                                categoriesLastModified: App.state.categoriesLastModified || new Date(),
+                                orderCounter: App.state.orderCounter,
+                                orderDrafts: App.db.orderDrafts,
+                                lastSync: firebase.firestore.FieldValue.serverTimestamp()
+                            }, { merge: true });
+                        } else {
+                            const docRef = db.collection('users').doc(userId).collection(collection).doc(String(data.id));
+
+                            const dataToWrite = {
+                                ...data,
+                                lastModified: firebase.firestore.FieldValue.serverTimestamp()
+                            };
+
+                            batch.set(docRef, dataToWrite);
+                        }
+
+                        operationCount++;
+
+                        if (operationCount >= 500) {
+                            return;
+                        }
+                    });
+
+                    await batch.commit();
+                    console.log(`✅ Batch записан: ${operationCount} операций`);
+
+                    App.firebase.pendingWrites.clear();
+                    App.firebase.updateSyncIndicator();
+
+                    setTimeout(() => {
+                        App.firebase.isProcessingOwnChange = false;
+                    }, 1000);
+
                 } catch (error) {
-                    console.error('Ошибка сохранения в Firebase:', error);
+                    console.error('Ошибка batch записи:', error);
+                    App.firebase.isProcessingOwnChange = false;
                 }
             },
 
@@ -8017,10 +8232,19 @@
                 const userId = App.firebase.currentUser.uid;
                 const db = App.firebase.db;
 
+                App.firebase.isProcessingOwnChange = true;
+
                 try {
                     await db.collection('users').doc(userId).collection(collection).doc(String(id)).delete();
+
+                    App.firebase.updateSyncIndicator();
+
+                    setTimeout(() => {
+                        App.firebase.isProcessingOwnChange = false;
+                    }, 1000);
                 } catch (error) {
-                    console.error('Ошибка удаления из Firebase:', error);
+                    console.error(`Ошибка удаления ${collection}/${id}:`, error);
+                    App.firebase.isProcessingOwnChange = false;
                 }
             }
         };
@@ -8143,6 +8367,7 @@
                     App.orders.updateRemainingAmount();
                 });
                 document.getElementById('pickup-time').addEventListener('change', function () {
+                    CacheManager.invalidateAvailabilityCache();
                     App.orders.calculateTotal();
                     if (App.state.selectedStartDate && App.state.selectedEndDate) {
                         document.querySelectorAll('.client-section select[data-category]').forEach(select => {
@@ -8153,6 +8378,7 @@
                     }
                 });
                 document.getElementById('return-time').addEventListener('change', function () {
+                    CacheManager.invalidateAvailabilityCache();
                     App.orders.calculateTotal();
                     if (App.state.selectedStartDate && App.state.selectedEndDate) {
                         document.querySelectorAll('.client-section select[data-category]').forEach(select => {
@@ -8402,6 +8628,7 @@
             }
 
             App.data.initialize();
+            CacheManager.rebuildIndexes();
             App.events.setup();
             App.calendar.render(App.state.currentDate);
             App.calendar.updateSelectedDatePanel(App.state.selectedDate);
