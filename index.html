@@ -7972,6 +7972,7 @@
                                 if (index !== -1) {
                                     if (change.type === 'modified') {
                                         App.db.orders[index] = data;
+                                        hasChanges = true;
                                         CacheManager.updateOrderInIndexes(data); // Обновляем индексы
                                     } else {
                                         const localTime = getTime(App.db.orders[index].lastModified);
@@ -7996,9 +7997,7 @@
                                 hasChanges = true;
                             }
                         });
-                        console.log('Изменение');
                         if (hasChanges) {
-                            console.log('Рендер при изменении');
                             App.orders.render();
                             App.calendar.render(App.state.currentDate);
                             App.calendar.updateSelectedDatePanel(App.state.selectedDate);
