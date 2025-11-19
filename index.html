@@ -5248,10 +5248,10 @@
                     App.equipment.render();
                 }
 
+                order.lastModified = new Date();
                 App.storage.save();
                 if (App.firebase.currentUser && App.firebase.syncEnabled) {
                     App.firebase.saveToFirebase('orders', order);
-                    App.firebase.flushPendingWrites(); // Немедленная отправка для критичных операций
                 }
 
                 App.orders.render();
