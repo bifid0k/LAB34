@@ -4978,8 +4978,7 @@
                             ...orderData,
                             status: oldOrder.status, // Сохраняем реальный статус
                             createdAt: oldOrder.createdAt, // Сохраняем оригинальную дату создания
-                            equipmentStatuses: oldOrder.equipmentStatuses || {}, // Сохраняем статусы оборудования
-                            lastModified: new Date()
+                            equipmentStatuses: oldOrder.equipmentStatuses || {} // Сохраняем статусы оборудования
                         };
                         oldOrder.clients.forEach(client => {
                             client.equipment.forEach(eq => {
@@ -7879,13 +7878,18 @@
                                 const index = App.db.orders.findIndex(o => o.id === data.id);
 
                                 if (index !== -1) {
-                                    const localTime = getTime(App.db.orders[index].lastModified);
-                                    const cloudTime = getTime(data.lastModified);
-
-                                    if (cloudTime > localTime) {
+                                    if (change.type === 'modified') {
                                         App.db.orders[index] = data;
-                                        CacheManager.updateOrderInIndexes(data);
-                                        hasChanges = true;
+                                        CacheManager.updateOrderInIndexes(data); // Обновляем индексы
+                                    } else {
+                                        const localTime = getTime(App.db.orders[index].lastModified);
+                                        const cloudTime = getTime(data.lastModified);
+
+                                        if (!App.db.orders[index].lastModified || cloudTime > localTime) {
+                                            App.db.orders[index] = data;
+                                            CacheManager.updateOrderInIndexes(data);
+                                            hasChanges = true;
+                                        }
                                     }
                                 } else {
                                     App.db.orders.push(data);
