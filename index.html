@@ -8019,7 +8019,7 @@
                         } else {
                             const localTime = App.db.clients[localIndex].lastModified ?
                                 new Date(App.db.clients[localIndex].lastModified).getTime() : 0;
-                            const cloudTime = fbItem.lastModified.toMillis();
+                            const cloudTime = getTime(fbItem.lastModified);
 
                             if (cloudTime > localTime) {
                                 App.db.clients[localIndex] = fbItem;
@@ -8040,7 +8040,7 @@
                         } else {
                             const localTime = App.db.equipment[localIndex].lastModified ?
                                 new Date(App.db.equipment[localIndex].lastModified).getTime() : 0;
-                            const cloudTime = fbItem.lastModified.toMillis();
+                            const cloudTime = getTime(fbItem.lastModified);
 
                             if (cloudTime > localTime) {
                                 App.db.equipment[localIndex] = fbItem;
@@ -8069,7 +8069,7 @@
                         } else {
                             const localTime = App.db.orders[localIndex].lastModified ?
                                 new Date(App.db.orders[localIndex].lastModified).getTime() : 0;
-                            const cloudTime = fbItem.lastModified.toMillis();
+                            const cloudTime = getTime(fbItem.lastModified);
 
                             if (cloudTime > localTime) {
                                 App.db.orders[localIndex] = fbItem;
@@ -8089,7 +8089,7 @@
                             if (fbItem.lastModified) {
                                 const localTime = App.db.priceCategories[localIndex].lastModified ?
                                     new Date(App.db.priceCategories[localIndex].lastModified).getTime() : 0;
-                                const cloudTime = fbItem.lastModified.toMillis();
+                                const cloudTime = getTime(fbItem.lastModified);
 
                                 if (cloudTime > localTime) {
                                     App.db.priceCategories[localIndex] = fbItem;
