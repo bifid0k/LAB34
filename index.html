@@ -2597,7 +2597,8 @@
                 preservedStartDate: null,
                 preservedEndDate: null,
                 currentOrderBreakdown: [],
-                isLoadingOrder: true
+                isLoadingOrder: true,
+                returnToClientId: null,
             },
 
             // Firebase
@@ -3159,6 +3160,14 @@
         // Modal Module
         App.modals = {
             close(modalId) {
+                if (modalId === 'order-modal' && App.state.returnToClientId) {
+                    const clientId = App.state.returnToClientId;
+                    App.state.returnToClientId = null;
+
+                    setTimeout(() => {
+                        App.clients.openModal(clientId);
+                    }, 300);
+                }
                 if (modalId === 'order-modal' && !App.state.currentEditingOrder && !App.state.orderCreatedSuccessfully) {
                     App.orders.autoSaveDraft();
                 }
@@ -3173,6 +3182,7 @@
                     App.state.selectedEndDate = null;
                     App.orders.render();
                 }
+
             }
         };
 
@@ -5202,7 +5212,6 @@
                     }
                 }
 
-                // Существующий код togglePayment
                 const totalAmount = order.totalAmount || 0;
                 const discount = order.discount || 0;
                 const finalAmount = totalAmount - (totalAmount * (discount / 100));
@@ -5239,10 +5248,10 @@
                     App.equipment.render();
                 }
 
-                order.lastModified = new Date();
                 App.storage.save();
                 if (App.firebase.currentUser && App.firebase.syncEnabled) {
                     App.firebase.saveToFirebase('orders', order);
+                    App.firebase.flushPendingWrites(); // Немедленная отправка для критичных операций
                 }
 
                 App.orders.render();
@@ -5755,7 +5764,7 @@
                             const startDate = order.startDate ? new Date(order.startDate).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '';
 
                             return `
-                <div onclick="App.modals.close('client-modal'); App.orders.openModal(${order.id}, false);" 
+                <div onclick="App.state.returnToClientId = ${clientId}; App.modals.close('client-modal'); App.orders.openModal(${order.id}, false);"
                      style="padding: 8px 12px; margin-bottom: 4px; background: #f8f9fa; border-radius: 6px; 
                             cursor: pointer; display: flex; justify-content: space-between; align-items: center;
                             transition: background 0.2s;"
@@ -8560,9 +8569,18 @@
 
                                 const modalId = this.id;
 
-                                // Сохраняем в зависимости от модалки
                                 if (modalId === 'order-modal') {
-                                    document.getElementById('create-order-btn').click();
+                                    // ДОБАВИТЬ ПРОВЕРКУ
+                                    if (App.state.returnToClientId) {
+                                        const clientId = App.state.returnToClientId;
+                                        App.state.returnToClientId = null;
+                                        App.modals.close(modalId);
+                                        setTimeout(() => {
+                                            App.clients.openModal(clientId);
+                                        }, 300);
+                                    } else {
+                                        document.getElementById('create-order-btn').click();
+                                    }
                                 } else if (modalId === 'client-modal') {
                                     document.getElementById('save-client-btn').click();
                                 } else if (modalId === 'equipment-add-modal') {
